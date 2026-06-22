@@ -1,5 +1,5 @@
 """
-timm ViT / DeiT 아키텍처 분석 & 메모리 프로파일링
+timm ViT 아키텍처 분석 & 메모리 프로파일링
 - 모듈 구조 출력
 - G_FFN / G_QKV / G_PROJ / G_HEAD / G_EMBED / G_OTHER 그룹별 파라미터 수
 - target_compression 대비 예상 sparsity 표
@@ -15,10 +15,10 @@ import timm
 MODELS = [
     "vit_tiny_patch16_224",
     "vit_small_patch16_224",
-    "vit_base_patch16_224",
-    "deit_tiny_patch16_224",
-    "deit_small_patch16_224",
-    "deit_base_patch16_224",
+    # "vit_base_patch16_224",
+    # "deit_tiny_patch16_224",
+    # "deit_small_patch16_224",
+    # "deit_base_patch16_224",
 ]
 
 TARGET_COMPRESSIONS = [0.10, 0.20, 0.30, 0.50]
@@ -193,10 +193,10 @@ def measure_vit_memory(model_name: str) -> dict:
 # ── 메인 ────────────────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
-    # 구조 출력 (vit_base 대표)
-    print("\n[1] Module structure (vit_base_patch16_224)")
-    m = timm.create_model("vit_base_patch16_224", pretrained=False)
-    print_module_structure(m, "vit_base_patch16_224")
+    # 구조 출력 (vit_small 대표)
+    print("\n[1] Module structure (vit_small_patch16_224)")
+    m = timm.create_model("vit_small_patch16_224", pretrained=False)
+    print_module_structure(m, "vit_small_patch16_224")
     del m
 
     # 파라미터 분석 (모든 모델)

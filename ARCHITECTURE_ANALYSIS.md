@@ -20,17 +20,14 @@
 
 ## 1. 분석 대상 모델
 
-| 모델 | timm 이름 | 전체 파라미터 | 크기(FP32) |
-|------|-----------|-------------|-----------|
-| ViT-Tiny | `vit_tiny_patch16_224` | 5,717,416 | 22.9 MB |
-| ViT-Small | `vit_small_patch16_224` | 22,050,664 | 88.2 MB |
-| ViT-Base | `vit_base_patch16_224` | 86,567,656 | 346.3 MB |
-| DeiT-Tiny | `deit_tiny_patch16_224` | 5,717,416 | 22.9 MB |
-| DeiT-Small | `deit_small_patch16_224` | 22,050,664 | 88.2 MB |
-| DeiT-Base | `deit_base_patch16_224` | 86,567,656 | 346.3 MB |
+| 모델 | timm 이름 | 전체 파라미터 | 크기(FP32) | 대상 |
+|------|-----------|-------------|-----------|:---:|
+| ViT-Tiny | `vit_tiny_patch16_224` | 5,717,416 | 22.9 MB | **✓** |
+| ViT-Small | `vit_small_patch16_224` | 22,050,664 | 88.2 MB | **✓** |
+| ~~ViT-Base~~ | ~~`vit_base_patch16_224`~~ | ~~86,567,656~~ | ~~346.3 MB~~ | — |
 
-> DeiT-tiny/small/base (`*_patch16_224`)는 ViT와 파라미터 수가 동일하다.  
-> distillation token을 사용하는 variant는 별도로 `deit_*_distilled_patch16_224`이며, 본 분석에서는 다루지 않는다.
+> **현재 구현 대상: ViT-Tiny, ViT-Small.**  
+> ViT-Base 및 DeiT 계열은 현재 제외. 동일 코드로 실행 가능하나 `--model` 인자만 변경하면 됨.
 
 ---
 
