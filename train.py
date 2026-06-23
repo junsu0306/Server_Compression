@@ -36,7 +36,7 @@ import torch.distributed as dist
 import timm
 from timm.utils import ModelEmaV2
 from timm.data import create_transform
-from timm.data.constants import IMAGENET_DEFAULT_MEAN, IMAGENET_DEFAULT_STD
+import timm.data
 from torchvision import datasets
 
 from pruning.vit_pruning import ViTPruner
@@ -129,26 +129,25 @@ def setup_distributed(args: argparse.Namespace) -> bool:
 # ── 데이터셋 ───────────────────────────────────────────────────────────────────
 
 def build_loaders(args: argparse.Namespace):
-    """ImageNet DataLoader 생성."""
+    """ImageNet DataLoader 생성. 모델별 권장 mean/std/crop_pct 적용."""
+    # 가중치 없이 config만 읽음 (모델마다 mean/std/crop_pct 가 다를 수 있음)
+    _cfg_model = timm.create_model(args.model, pretrained=False)
+    data_config = timm.data.resolve_model_data_config(_cfg_model)
+    del _cfg_model
+
     train_transform = create_transform(
-        input_size=args.input_size,
+        input_size=data_config["input_size"],
         is_training=True,
         color_jitter=0.4,
         auto_augment="rand-m9-mstd0.5-inc1",
-        interpolation="bicubic",
+        interpolation=data_config["interpolation"],
         re_prob=0.25,
         re_mode="pixel",
         re_count=1,
-        mean=IMAGENET_DEFAULT_MEAN,
-        std=IMAGENET_DEFAULT_STD,
+        mean=data_config["mean"],
+        std=data_config["std"],
     )
-    val_transform = create_transform(
-        input_size=args.input_size,
-        is_training=False,
-        interpolation="bicubic",
-        mean=IMAGENET_DEFAULT_MEAN,
-        std=IMAGENET_DEFAULT_STD,
-    )
+    val_transform = timm.data.create_transform(**data_config, is_training=False)
 
     train_ds = datasets.ImageFolder(
         os.path.join(args.data_path, "train"), transform=train_transform
