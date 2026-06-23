@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import os
 import argparse
+import yaml
 from pathlib import Path
 
 import torch
@@ -48,64 +49,69 @@ from engine import train_one_epoch, evaluate
 def get_args() -> argparse.Namespace:
     p = argparse.ArgumentParser("ViT Soft Pruning Fine-tuning")
 
-    # 데이터 — 서버 경로는 실행 시 --data-path 로 지정
-    p.add_argument("--data-path", required=True,
-                   help="ImageNet 루트 디렉터리 (하위에 train/ val/ 존재)")
+    # Config 파일 (YAML) — 지정 시 파일 값이 기본값으로 적용되고, CLI 인자로 override 가능
+    p.add_argument("--config", default="",
+                   help="YAML config 파일 경로 (예: configs/vit_small_prune50.yaml)")
+
+    # 데이터
+    p.add_argument("--data-path", default="")
     p.add_argument("--num-workers", type=int, default=8)
     p.add_argument("--pin-mem",     action="store_true", default=True)
 
     # 모델
-    p.add_argument("--model",       default="vit_tiny_patch16_224",
-                   help="timm 모델 이름 (예: vit_base_patch16_224)")
+    p.add_argument("--model",       default="vit_tiny_patch16_224")
     p.add_argument("--input-size",  type=int, default=224)
     p.add_argument("--num-classes", type=int, default=1000)
 
     # 학습 하이퍼파라미터
-    p.add_argument("--epochs",         type=int,   default=30)
-    p.add_argument("--batch-size",     type=int,   default=256,
-                   help="GPU 당 배치 크기")
-    p.add_argument("--lr",             type=float, default=5e-5,
-                   help="초기 learning rate (ViT fine-tuning 권장: 5e-5 ~ 1e-4)")
+    p.add_argument("--epochs",         type=int,   default=50)
+    p.add_argument("--batch-size",     type=int,   default=256)
+    p.add_argument("--lr",             type=float, default=5e-5)
     p.add_argument("--weight-decay",   type=float, default=0.05)
     p.add_argument("--clip-grad",      type=float, default=1.0)
     p.add_argument("--warmup-epochs",  type=int,   default=5)
-    p.add_argument("--min-lr",         type=float, default=1e-6,
-                   help="Cosine LR 최솟값")
-    p.add_argument("--smoothing",      type=float, default=0.1,
-                   help="Label smoothing epsilon")
-    p.add_argument("--amp",            action="store_true", default=True,
-                   help="자동 혼합 정밀도 (AMP) 사용")
+    p.add_argument("--min-lr",         type=float, default=1e-6)
+    p.add_argument("--smoothing",      type=float, default=0.1)
+    p.add_argument("--amp",            action="store_true", default=True)
 
     # EMA
     p.add_argument("--model-ema",       action="store_true", default=True)
     p.add_argument("--model-ema-decay", type=float,          default=0.9998)
 
     # Soft Pruning
-    p.add_argument("--target-compression",  type=float, default=0.0,
-                   help="목표 파라미터 압축률 0.0~1.0 (0=비활성)")
+    p.add_argument("--target-compression",   type=float, default=0.0)
     p.add_argument("--pruning-max-sparsity", type=float, default=0.95)
-    p.add_argument("--prune-refresh-steps",  type=int,   default=100,
-                   help="마스크 재계산 주기 (step 단위). 0=매 step.")
+    p.add_argument("--prune-refresh-steps",  type=int,   default=100)
 
     # 출력 / 체크포인트
     p.add_argument("--output-dir",   default="./output")
-    p.add_argument("--resume",       default="",
-                   help="재개할 체크포인트 경로")
-    p.add_argument("--log-interval", type=int, default=50,
-                   help="배치 로그 출력 주기")
+    p.add_argument("--resume",       default="")
+    p.add_argument("--log-interval", type=int, default=50)
 
     # WandB
     p.add_argument("--wandb",          action="store_true")
     p.add_argument("--wandb-project",  default="vit-pruning")
-    p.add_argument("--wandb-run-name", default="",
-                   help="비어있으면 {model}_prune{compression%} 로 자동 설정")
-    p.add_argument("--wandb-run-id",   default="",
-                   help="Resume 시 기존 run id 입력")
+    p.add_argument("--wandb-run-name", default="")
+    p.add_argument("--wandb-run-id",   default="")
 
     # DDP
     p.add_argument("--dist-url", default="env://")
 
-    return p.parse_args()
+    # ── YAML config 로드 후 기본값 덮어쓰기 ──────────────────────────────────
+    # 1차 파싱으로 --config 경로만 추출
+    pre, _ = p.parse_known_args()
+    if pre.config:
+        with open(pre.config) as f:
+            yaml_cfg = yaml.safe_load(f)
+        # YAML 키(snake_case) → argparse dest(snake_case) 변환 후 set_defaults
+        p.set_defaults(**{k.replace("-", "_"): v for k, v in yaml_cfg.items()})
+
+    args = p.parse_args()
+
+    if not args.data_path:
+        p.error("--data-path 또는 config 내 data_path 를 지정해야 합니다.")
+
+    return args
 
 
 # ── 분산 학습 설정 ──────────────────────────────────────────────────────────────
