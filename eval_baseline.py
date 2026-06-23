@@ -26,8 +26,7 @@ import argparse
 import torch
 import torch.distributed as dist
 import timm
-from timm.data import create_transform
-from timm.data.constants import IMAGENET_DEFAULT_MEAN, IMAGENET_DEFAULT_STD
+import timm.data
 from torch.utils.data import DataLoader, DistributedSampler
 from torchvision import datasets
 
@@ -78,14 +77,11 @@ def setup_distributed(args: argparse.Namespace) -> bool:
 
 # ── val DataLoader ─────────────────────────────────────────────────────────────
 
-def build_val_loader(args: argparse.Namespace) -> DataLoader:
-    val_transform = create_transform(
-        input_size=args.input_size,
-        is_training=False,
-        interpolation="bicubic",
-        mean=IMAGENET_DEFAULT_MEAN,
-        std=IMAGENET_DEFAULT_STD,
-    )
+def build_val_loader(args: argparse.Namespace, model: torch.nn.Module) -> DataLoader:
+    # 모델의 실제 권장 data config 사용 (mean/std/crop_pct 등이 모델마다 다름)
+    data_config = timm.data.resolve_model_data_config(model)
+    val_transform = timm.data.create_transform(**data_config, is_training=False)
+
     val_ds = datasets.ImageFolder(
         os.path.join(args.data_path, "val"), transform=val_transform
     )
@@ -105,7 +101,6 @@ def build_val_loader(args: argparse.Namespace) -> DataLoader:
 
 def eval_one_model(
     model_name: str,
-    val_loader: DataLoader,
     device: torch.device,
     args: argparse.Namespace,
     is_main: bool,
@@ -118,12 +113,18 @@ def eval_one_model(
     model = timm.create_model(model_name, pretrained=True)
     model = model.to(device)
 
+    # 모델별 권장 data config 출력 (디버깅용)
+    if is_main:
+        cfg = timm.data.resolve_model_data_config(model)
+        n_params = sum(p.numel() for p in model.parameters())
+        print(f"  params:    {n_params:,}")
+        print(f"  mean/std:  {cfg['mean']} / {cfg['std']}")
+        print(f"  crop_pct:  {cfg.get('crop_pct', 'default')}")
+
+    val_loader = build_val_loader(args, model)
+
     if args.distributed:
         model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[args.gpu])
-
-    n_params = sum(p.numel() for p in model.parameters())
-    if is_main:
-        print(f"  params: {n_params:,}")
 
     metrics = evaluate(val_loader, model, device, amp=args.amp)
     return metrics
@@ -160,11 +161,9 @@ def main():
 
     models_to_eval = [args.model] if args.model else BASELINE_MODELS
 
-    val_loader = build_val_loader(args)
-
     results: dict[str, dict] = {}
     for model_name in models_to_eval:
-        metrics = eval_one_model(model_name, val_loader, device, args, is_main)
+        metrics = eval_one_model(model_name, device, args, is_main)
         results[model_name] = metrics
 
         if is_main:
