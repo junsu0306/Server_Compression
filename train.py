@@ -382,6 +382,7 @@ def main():
 
         # WandB 로깅
         if wandb_run is not None and is_main:
+            import wandb as _wandb
             log_dict = {
                 "epoch":         epoch,
                 "train/loss":    train_stats["loss"],
@@ -393,6 +394,25 @@ def main():
                 "val/top1_best": best_acc1,
             }
             log_dict.update(sparsity_stats)
+
+            # 블록별 sparsity 한 번에 보기 (bar chart)
+            if sparsity_stats:
+                layer_rows = sorted(
+                    ([k.split("/blocks/")[1].split("/")[0], v]
+                     for k, v in sparsity_stats.items()
+                     if "/blocks/" in k),
+                    key=lambda x: int(x[0])
+                )
+                if layer_rows:
+                    tbl = _wandb.Table(
+                        data=[[f"block {r[0]}", r[1]] for r in layer_rows],
+                        columns=["block", "sparsity"],
+                    )
+                    log_dict["pruning/layer_sparsity"] = _wandb.plot.bar(
+                        tbl, "block", "sparsity",
+                        title="FFN Sparsity per Block"
+                    )
+
             wandb_run.log(log_dict)
 
         if is_main:
