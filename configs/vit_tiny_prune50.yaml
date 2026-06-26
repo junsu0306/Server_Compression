@@ -30,9 +30,9 @@ prune_refresh_steps: 100
 pruning_mode: global         # global=non-uniform(권장) | uniform=모든 블록 동일
 
 # ── 출력 ──────────────────────────────────────────────────────────
-output_dir: ./output/vit_tiny_prune50_global
+output_dir: ./output/vit_tiny_prune50
 
 # ── WandB ─────────────────────────────────────────────────────────
 wandb: true
 wandb_project: vit-pruning
-wandb_run_name: vit_tiny_prune50_global
+wandb_run_name: ""
