@@ -1,7 +1,7 @@
-# ViT-Tiny  |  50% compression  |  GPU 6,7 (11GB × 2)
+# ViT-Tiny  |  50% compression  |  GPU 4,5,6,7 (11GB × 4)
 #
 # 실행:
-#   CUDA_VISIBLE_DEVICES=6,7 torchrun --nproc_per_node=2 train.py \
+#   CUDA_VISIBLE_DEVICES=4,5,6,7 torchrun --nproc_per_node=4 train.py \
 #     --config configs/vit_tiny_prune50.yaml
 
 model: vit_tiny_patch16_224
@@ -9,7 +9,7 @@ data_path: /workspace/etri_iitp/JS/Server_Compression/data/imagenet
 
 # ── 학습 ──────────────────────────────────────────────────────────
 epochs: 50
-batch_size: 256        # per GPU  →  총 512 (×2 GPU)
+batch_size: 256        # per GPU  →  총 1024 (×4 GPU)
 lr: 5.0e-5
 weight_decay: 0.05
 clip_grad: 1.0
@@ -30,9 +30,9 @@ prune_refresh_steps: 100
 pruning_mode: global         # global=non-uniform(권장) | uniform=모든 블록 동일
 
 # ── 출력 ──────────────────────────────────────────────────────────
-output_dir: ./output/vit_tiny_prune50
+output_dir: ./output/vit_tiny_prune50_global
 
 # ── WandB ─────────────────────────────────────────────────────────
 wandb: true
 wandb_project: vit-pruning
-wandb_run_name: ""
+wandb_run_name: "vit_tiny_prune50_global"
