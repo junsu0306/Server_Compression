@@ -82,6 +82,9 @@ def get_args() -> argparse.Namespace:
     p.add_argument("--target-compression",   type=float, default=0.0)
     p.add_argument("--pruning-max-sparsity", type=float, default=0.95)
     p.add_argument("--prune-refresh-steps",  type=int,   default=100)
+    p.add_argument("--pruning-mode",         default="global",
+                   choices=["global", "uniform"],
+                   help="global=non-uniform(권장), uniform=모든 블록 동일 sparsity")
 
     # 출력 / 체크포인트
     p.add_argument("--output-dir",   default="./output")
@@ -309,6 +312,7 @@ def main():
             target_compression=args.target_compression,
             max_sparsity=args.pruning_max_sparsity,
             index_refresh_steps=args.prune_refresh_steps,
+            mode=args.pruning_mode,
         )
 
     # ── Optimizer & Scheduler ──────────────────────────────────────────────────

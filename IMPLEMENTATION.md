@@ -71,8 +71,33 @@ Server_Compression/
 
 [Reducing — 학습 완료 후]
   zero 채널을 물리적으로 제거 → 실제로 작은 Dense 모델 생성
-  fc1: (mlp_dim, embed_dim) → (n_survived, embed_dim)
+  fc1: (mlp_dim, embed_dim) → (n_survived, embed_dim)  ← 블록마다 n_survived 다름
   fc2: (embed_dim, mlp_dim) → (embed_dim, n_survived)
+```
+
+### Pruning 모드: Uniform vs Global (Non-uniform)
+
+| 모드 | 동작 | 특징 |
+|------|------|------|
+| `uniform` | 각 블록 독립적으로 하위 sparsity% 제거 | 모든 블록 동일 비율 |
+| `global` (**기본값**) | 전체 블록 채널을 global L2 norm 랭킹으로 선택 | 중요 블록은 덜 잘리고, 중복 많은 블록은 더 잘림 |
+
+```
+[Global mode 동작]
+  1. 모든 블록의 fc1.weight row L2 norm 계산
+     block 0: [0.82, 0.03, 1.24, ...]
+     block 5: [0.91, 0.02, 0.07, ...]
+     ...  (총 12 × 768 = 9,216개 norm)
+
+  2. 전체를 한번에 정렬 → 하위 N개를 globally 선택
+     단, 블록당 max_sparsity(0.95) 상한 적용
+     → 상한 초과분은 다른 블록에서 추가 제거
+
+  3. 결과: 블록마다 다른 sparsity (자동 non-uniform)
+     block 0: 58% 제거  ← 중요, 덜 잘림
+     block 5: 92% 제거  ← 중복 많음
+     block 11: 71% 제거
+     전체 총 제거 채널 수 = uniform과 동일 (압축률 보장)
 ```
 
 ### Pruning 대상: G_FFN (FFN hidden dimension)
@@ -187,6 +212,8 @@ epochs: 50
 batch_size: 256        # per GPU
 lr: 5.0e-5
 target_compression: 0.50
+pruning_max_sparsity: 0.95   # 블록당 최대 sparsity 상한 (global mode)
+pruning_mode: global          # global=non-uniform(기본값) | uniform=모든 블록 동일
 output_dir: ./output/vit_tiny_prune50
 wandb: true
 ```
@@ -208,8 +235,9 @@ torchrun ... train.py --config configs/vit_tiny_prune50.yaml --epochs 30
 pruner = ViTPruner(
     model,
     target_compression=0.50,
-    max_sparsity=0.95,
+    max_sparsity=0.95,        # 블록당 최대 sparsity 상한 (global mode에서 per-block cap)
     index_refresh_steps=100,
+    mode="global",            # "global"(non-uniform, 기본값) | "uniform"
 )
 
 # 학습 루프: optimizer.step() 직후, model_ema.update() 이전
@@ -217,7 +245,22 @@ pruner.apply(model)
 
 # WandB 로깅
 metrics = pruner.log_sparsity(model)
-# → {'pruning/actual_sparsity': 0.8053, 'pruning/zero_filters': 8856, ...}
+# → {
+#     'pruning/actual_sparsity': 0.80,
+#     'pruning/zero_filters': 8400,
+#     'pruning/layer/blocks/0/mlp': 0.58,   ← 블록마다 다름 (global mode)
+#     'pruning/layer/blocks/5/mlp': 0.92,
+#     'pruning/survived/blocks/0/mlp': 323,  ← 블록별 생존 채널 수 (절대값)
+#    ...
+#   }
+```
+
+**Global mode per-block cap 동작:**
+```
+블록 5의 max_prune = round(768 × 0.95) = 729개
+  → 블록 5가 730개를 잘라야 한다면 729개까지만 잘림
+  → 초과 1개는 다른 블록(여유 있는 블록)의 낮은 norm 채널이 대신 제거됨
+  → 총 제거 채널 수 = 동일하게 유지 (압축률 보장)
 ```
 
 ---
@@ -252,6 +295,8 @@ mlp_dims = get_reduced_config(ema_model)
 | `--batch-size` | 256 | GPU 당 배치 크기 |
 | `--lr` | 5e-5 | AdamW learning rate |
 | `--target-compression` | 0.0 | 압축률 (0=pruning 비활성) |
+| `--pruning-mode` | global | `global`=non-uniform \| `uniform`=균일 |
+| `--pruning-max-sparsity` | 0.95 | 블록당 최대 sparsity 상한 |
 | `--prune-refresh-steps` | 100 | 마스크 재계산 주기 |
 | `--warmup-epochs` | 5 | LR warmup epoch 수 |
 | `--resume` | "" | 체크포인트 재개 경로 |
@@ -392,17 +437,22 @@ python reduce.py \
   --output ./output/vit_small_prune50/reduced.pt
 ```
 
-실행 결과 예시 (ViT-Tiny 50%):
+실행 결과 예시 (ViT-Tiny 50%, global mode):
 ```
 [Reducer] EMA weights 사용
 BEFORE: 5,717,416 params
 AFTER:  2,862,256 params  (49.94% removed)
 
-블록별 survived mlp_dim:
-  block  0: 150 / 768
-  block  1: 152 / 768
+블록별 survived mlp_dim (non-uniform):
+  block  0: 320 / 768  ← 중요, 많이 살아남음
+  block  1: 280 / 768
+  block  5:  58 / 768  ← 중복 많음, 많이 제거됨
+  block 11: 240 / 768
   ...
 ```
+
+> uniform mode와 달리 블록마다 survived mlp_dim이 다르므로
+> `apply_reduced_config(model, mlp_dims)` 로 블록별 구조를 복원해야 함 (이미 지원됨).
 
 ---
 
@@ -454,14 +504,18 @@ with torch.no_grad():
 | `val/top1_best` | 현재까지 최고 val Top-1 |
 | `pruning/actual_sparsity` | 전체 prunable 채널 중 실제 zero 비율 |
 | `pruning/zero_filters` | zero 채널 수 (절대값) |
-| `pruning/target_sparsity` | 설정된 목표 sparsity |
-| `pruning/layer/blocks/N/mlp` | 블록별 zero 비율 |
+| `pruning/target_sparsity` | equivalent sparsity (이진탐색 기준값) |
+| `pruning/layer/blocks/N/mlp` | 블록별 zero 비율 (global mode → 블록마다 다름) |
+| `pruning/survived/blocks/N/mlp` | 블록별 생존 채널 수 (절대값) |
+| `pruning/layer_sparsity` | 블록별 sparsity 한눈에 보기 (bar chart) |
 | `baseline/top1` | Pruning 전 pretrained 기준 top-1 |
 
 **수렴 확인 체크리스트:**
 - epoch 1: `pruning/actual_sparsity` 가 target에 근접하는지 확인
 - epoch 5: LR warmup 종료 후 val/top1 회복 추세 확인
-- epoch 10+: 블록별 sparsity가 균등한지 확인
+- epoch 10+: `pruning/layer_sparsity` bar chart에서 블록별 분포 확인
+  - global mode: 블록마다 다른 높이가 정상 (non-uniform)
+  - uniform mode: 모든 블록 동일 높이가 정상
 
 ---
 
@@ -490,6 +544,23 @@ raw model의 zero 패턴을 EMA에 이식한 뒤 reduce.
 timm 모델마다 권장 normalization이 다름:
 - ViT-Tiny/Small (AugReg): `mean=std=(0.5, 0.5, 0.5)`, `crop_pct=0.9`
 - 하드코딩 시 정확도가 크게 하락함 (vit_tiny 기준 ~75% → ~44%)
+
+### Global Non-uniform Pruning (mode="global", 기본값)
+
+성능 향상을 위해 블록별 중요도에 따라 자동으로 비율을 달리 적용:
+
+```
+핵심 아이디어:
+  전체 블록 채널의 L2 norm을 한번에 비교 → 전역 하위 N개 제거
+  → 중요한 블록(높은 norm)은 채널을 더 많이 보존
+  → 중복이 많은 블록(낮은 norm)은 더 많이 제거
+
+per-block 상한 (max_sparsity):
+  cap 초과 채널의 norm → inf로 마킹 → 전역 선택에서 자동 제외
+  초과분은 여유 있는 다른 블록의 낮은 norm 채널이 대신 채움
+  → 특정 블록의 과도한 파괴 방지
+  → 총 제거 채널 수 = uniform과 동일하게 유지 (압축률 보장)
+```
 
 ### Lazy init
 

@@ -27,6 +27,7 @@ model_ema_decay: 0.9998
 target_compression: 0.30    # G_FFN sparsity ≈ 0.4665
 pruning_max_sparsity: 0.95
 prune_refresh_steps: 100
+pruning_mode: global         # global=non-uniform(권장) | uniform=모든 블록 동일
 
 # ── 출력 ──────────────────────────────────────────────────────────
 output_dir: ./output/vit_small_prune30
