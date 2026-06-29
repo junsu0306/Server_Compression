@@ -29,6 +29,10 @@ pruning_max_sparsity: 0.95
 prune_refresh_steps: 100
 pruning_mode: global         # global=non-uniform(권장) | uniform=모든 블록 동일
 
+# ── Knowledge Distillation ────────────────────────────────────────
+kd_alpha: 0.5           # KD loss 가중치  loss=(1-α)·CE + α·KL
+kd_temperature: 4.0     # soft label 온도 (높을수록 부드러운 분포)
+
 # ── 출력 ──────────────────────────────────────────────────────────
 output_dir: ./output/vit_tiny_prune50_global
 

@@ -9,6 +9,7 @@ from __future__ import annotations
 import time
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
 
 # ── 유틸 ───────────────────────────────────────────────────────────────────────
@@ -42,18 +43,21 @@ def accuracy(output: torch.Tensor, target: torch.Tensor, topk=(1, 5)):
 # ── 학습 ───────────────────────────────────────────────────────────────────────
 
 def train_one_epoch(
-    model:        nn.Module,
-    criterion:    nn.Module,
+    model:          nn.Module,
+    criterion:      nn.Module,
     data_loader,
-    optimizer:    torch.optim.Optimizer,
-    scaler:       torch.cuda.amp.GradScaler,
-    device:       torch.device,
-    epoch:        int,
+    optimizer:      torch.optim.Optimizer,
+    scaler:         torch.cuda.amp.GradScaler,
+    device:         torch.device,
+    epoch:          int,
     model_ema=None,
     pruner=None,
-    amp:          bool = True,
-    clip_grad:    float | None = None,
-    log_interval: int = 50,
+    amp:            bool = True,
+    clip_grad:      float | None = None,
+    log_interval:   int = 50,
+    teacher:        nn.Module | None = None,
+    kd_alpha:       float = 0.5,
+    kd_temperature: float = 4.0,
 ) -> dict[str, float]:
     """
     한 epoch 학습.
@@ -62,10 +66,14 @@ def train_one_epoch(
         optimizer.step() → pruner.apply() → model_ema.update()
 
     Args:
-        pruner:    ViTPruner 인스턴스 (None이면 일반 학습)
-        model_ema: timm ModelEmaV2 인스턴스 (None이면 EMA 미사용)
+        pruner:         ViTPruner 인스턴스 (None이면 일반 학습)
+        model_ema:      timm ModelEmaV2 인스턴스 (None이면 EMA 미사용)
+        teacher:        KD용 frozen teacher 모델 (None이면 KD 비활성)
+        kd_alpha:       KD loss 가중치  loss = (1-α)·CE + α·KL
+        kd_temperature: soft label 온도 (높을수록 soft)
     """
     model.train()
+    # teacher는 항상 eval 상태를 유지한다 (train_one_epoch가 바꾸지 않음)
 
     loss_m = AverageMeter()
     top1_m = AverageMeter()
@@ -80,6 +88,17 @@ def train_one_epoch(
         with torch.amp.autocast("cuda", enabled=amp):
             output = model(samples)
             loss   = criterion(output, targets)
+
+            if teacher is not None:
+                with torch.no_grad():
+                    teacher_logits = teacher(samples)
+                T = kd_temperature
+                kd_loss = F.kl_div(
+                    F.log_softmax(output / T, dim=1),
+                    F.softmax(teacher_logits / T, dim=1),
+                    reduction="batchmean",
+                ) * (T * T)
+                loss = (1.0 - kd_alpha) * loss + kd_alpha * kd_loss
 
         # ── Backward + optimizer.step ──────────────────────────────────────────
         optimizer.zero_grad()

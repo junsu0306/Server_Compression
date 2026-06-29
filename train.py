@@ -86,6 +86,12 @@ def get_args() -> argparse.Namespace:
                    choices=["global", "uniform"],
                    help="global=non-uniform(권장), uniform=모든 블록 동일 sparsity")
 
+    # Knowledge Distillation
+    p.add_argument("--kd-alpha",       type=float, default=0.0,
+                   help="KD loss 가중치 (0=비활성, 0.5 권장). loss=(1-α)·CE + α·KL")
+    p.add_argument("--kd-temperature", type=float, default=4.0,
+                   help="KD softening temperature (권장: 3~5)")
+
     # 출력 / 체크포인트
     p.add_argument("--output-dir",   default="./output")
     p.add_argument("--resume",       default="")
@@ -304,6 +310,21 @@ def main():
     if args.model_ema:
         model_ema = ModelEmaV2(model, decay=args.model_ema_decay, device=device)
 
+    # ── Teacher (Knowledge Distillation) ──────────────────────────────────────
+    teacher = None
+    if args.kd_alpha > 0:
+        teacher = timm.create_model(
+            args.model, pretrained=True, num_classes=args.num_classes
+        ).to(device)
+        teacher.eval()
+        for p in teacher.parameters():
+            p.requires_grad_(False)
+        if is_main:
+            print(
+                f"[KD] teacher={args.model}  "
+                f"alpha={args.kd_alpha}  T={args.kd_temperature}"
+            )
+
     # ── Pruner ─────────────────────────────────────────────────────────────────
     pruner = None
     if args.target_compression > 0:
@@ -344,6 +365,7 @@ def main():
             f"  epochs={args.epochs}  batch={args.batch_size}  lr={args.lr}\n"
             f"  compression={args.target_compression}  amp={args.amp}  "
             f"ema={args.model_ema}\n"
+            f"  kd={'ON (α=' + str(args.kd_alpha) + ', T=' + str(args.kd_temperature) + ')' if args.kd_alpha > 0 else 'OFF'}\n"
         )
 
     for epoch in range(start_epoch, args.epochs):
@@ -363,6 +385,9 @@ def main():
             amp=args.amp,
             clip_grad=args.clip_grad,
             log_interval=args.log_interval,
+            teacher=teacher,
+            kd_alpha=args.kd_alpha,
+            kd_temperature=args.kd_temperature,
         )
         lr_scheduler.step()
 
@@ -400,11 +425,13 @@ def main():
             log_dict.update(sparsity_stats)
 
             # 블록별 sparsity 한 번에 보기 (bar chart)
+            # pruning/layer/blocks/N/mlp 키만 사용 (ratio 0~1)
+            # pruning/survived/blocks/N/mlp (절대값) 는 제외
             if sparsity_stats:
                 layer_rows = sorted(
                     ([k.split("/blocks/")[1].split("/")[0], v]
                      for k, v in sparsity_stats.items()
-                     if "/blocks/" in k),
+                     if "/layer/blocks/" in k),
                     key=lambda x: int(x[0])
                 )
                 if layer_rows:

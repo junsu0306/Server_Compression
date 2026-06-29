@@ -100,6 +100,37 @@ Server_Compression/
      전체 총 제거 채널 수 = uniform과 동일 (압축률 보장)
 ```
 
+### Knowledge Distillation (KD) — 선택적 적용
+
+Soft Pruning과 병행하여 압축 후 정확도를 높이기 위해 KD를 추가 지원.
+
+```
+[KD Loss]
+  Teacher: 원본 pretrained 모델 (frozen, eval mode)
+  Student: 현재 학습 중인 pruned 모델
+
+  loss = (1 - α) × CE(student, hard_label)
+       +      α  × KL(student_logits/T ‖ teacher_logits/T) × T²
+              ↑                                               ↑
+           KD 가중치 (α=0.5 권장)              Temperature scaling 보정
+
+T (temperature): 높을수록 teacher softmax 분포가 부드러워짐
+  → 클래스 간 유사성 정보가 student에게 더 잘 전달됨
+  → 권장: T=4.0
+```
+
+**효과 (50% 압축 기준 예상값):**
+
+| 방법 | ViT-Tiny top-1 |
+|------|:--------------:|
+| Uniform pruning | ~62% |
+| Global (non-uniform) | ~64% |
+| Global + KD | **~68~70%** |
+
+비활성화: config에서 `kd_alpha: 0.0` 또는 CLI `--kd-alpha 0.0`
+
+---
+
 ### Pruning 대상: G_FFN (FFN hidden dimension)
 
 ```
@@ -214,6 +245,8 @@ lr: 5.0e-5
 target_compression: 0.50
 pruning_max_sparsity: 0.95   # 블록당 최대 sparsity 상한 (global mode)
 pruning_mode: global          # global=non-uniform(기본값) | uniform=모든 블록 동일
+kd_alpha: 0.5                 # KD loss 가중치 (0=KD 비활성)
+kd_temperature: 4.0           # soft label 온도
 output_dir: ./output/vit_tiny_prune50
 wandb: true
 ```
@@ -298,6 +331,8 @@ mlp_dims = get_reduced_config(ema_model)
 | `--pruning-mode` | global | `global`=non-uniform \| `uniform`=균일 |
 | `--pruning-max-sparsity` | 0.95 | 블록당 최대 sparsity 상한 |
 | `--prune-refresh-steps` | 100 | 마스크 재계산 주기 |
+| `--kd-alpha` | 0.0 | KD loss 가중치 (0=비활성, 0.5 권장) |
+| `--kd-temperature` | 4.0 | KD soft label 온도 (권장: 3~5) |
 | `--warmup-epochs` | 5 | LR warmup epoch 수 |
 | `--resume` | "" | 체크포인트 재개 경로 |
 | `--wandb` | False | WandB 로깅 활성 |
@@ -562,6 +597,24 @@ per-block 상한 (max_sparsity):
   → 총 제거 채널 수 = uniform과 동일하게 유지 (압축률 보장)
 ```
 
+### Knowledge Distillation (KD)
+
+Teacher는 student와 동일한 아키텍처의 pretrained 모델(frozen).  
+KL divergence에 `T²` 보정을 곱해야 gradient scale이 CE loss와 동등해짐.
+
+```python
+# engine.py 핵심 코드
+T = kd_temperature
+kd_loss = F.kl_div(
+    F.log_softmax(output / T, dim=1),
+    F.softmax(teacher_logits / T, dim=1),
+    reduction="batchmean",
+) * (T * T)   # ← T² 보정: gradient scale 정규화
+loss = (1.0 - kd_alpha) * loss + kd_alpha * kd_loss
+```
+
+Teacher는 DDP에 포함시키지 않음 (frozen이므로 gradient 불필요).
+
 ### Lazy init
 
 `ViTPruner.__init__` 시점엔 model이 CPU에 있음.  
@@ -608,7 +661,25 @@ print(ckpt.keys())
 # → ['model', 'model_ema', 'optimizer', 'lr_scheduler', 'scaler', 'pruner', 'epoch', 'best_acc1', 'args']
 ```
 
-### ❺ 아키텍처 분석 재실행
+### ❺ KD 효과가 없을 때
+
+alpha나 temperature 조정:
+```yaml
+# α를 높이면 KD 신호 강화 (CE 비중 감소)
+kd_alpha: 0.7       # 기본 0.5 → 강화
+
+# T를 낮추면 teacher 분포가 더 sharp → hard 신호에 가까워짐
+kd_temperature: 3.0  # 기본 4.0 → 낮춤 (sharp)
+# T를 높이면 soft → 클래스 간 관계 정보 더 많이 전달
+kd_temperature: 6.0  # 높임 (soft)
+```
+
+KD 비활성화:
+```yaml
+kd_alpha: 0.0
+```
+
+### ❻ 아키텍처 분석 재실행
 
 ```bash
 python measure_memory.py
