@@ -41,8 +41,9 @@ Server_Compression/
 ├── engine.py                    ← train_one_epoch / evaluate
 ├── train.py                     ← 학습 진입점 (단일GPU / DDP, --config 지원)
 ├── reduce.py                    ← Reducing CLI
-├── eval_baseline.py             ← Pruning 전 pretrained 모델 baseline 평가 (NEW)
-├── export_onnx.py               ← Reduced 모델 → ONNX 변환 (NEW)
+├── eval_baseline.py             ← Pruning 전 pretrained 모델 baseline 평가
+├── eval_reduced.py              ← Reduced 모델 val 평가 → WandB test 기록
+├── export_onnx.py               ← Reduced 모델 → ONNX 변환
 ├── measure_memory.py            ← 아키텍처 분석 & 파라미터 프로파일링
 ├── data/
 │   └── imagenet/                ← ImageNet (서버에만 존재, gitignore)
@@ -74,6 +75,47 @@ Server_Compression/
   fc1: (mlp_dim, embed_dim) → (n_survived, embed_dim)  ← 블록마다 n_survived 다름
   fc2: (embed_dim, mlp_dim) → (embed_dim, n_survived)
 ```
+
+### 1 step 전체 학습 순서 (engine.py)
+
+매 배치마다 아래 순서로 실행된다. 순서가 바뀌면 EMA가 pruning 이전 weight를 학습하거나 pruning이 무효화된다.
+
+```
+① samples, targets 로드
+
+② [Student forward]  output = model(samples)
+   └─ 이 시점 FFN 채널의 ~80%는 이미 0인 상태
+
+③ CE Loss 계산
+   loss = CrossEntropyLoss(output, targets)
+
+④ [Teacher forward]  teacher_logits = teacher(samples)  ← torch.no_grad()
+   └─ frozen 원본 모델, gradient 없음
+
+⑤ KD Loss 계산 + 합산
+   kd_loss = KL(student/T ‖ teacher/T) × T²
+   loss = 0.5 × CE + 0.5 × KD
+
+⑥ Backward
+   loss.backward()
+   └─ gradient는 Student에만 흐름, Teacher 쪽 없음
+
+⑦ optimizer.step()
+   └─ gradient 반영 → weight 갱신
+   └─ 이 시점: dead 채널이 gradient에 의해 일시적으로 살아날 수 있음
+
+⑧ pruner.apply()  ★ 핵심 ★
+   └─ fc1.weight, fc1.bias, fc2.weight의 마스크 대상 위치를 다시 0으로 강제
+   └─ tensor.data.mul_(mask) — autograd를 우회해 직접 덮어씀
+
+⑨ model_ema.update()
+   └─ pruning 후 weight 기준으로 shadow weight 갱신
+   └─ 검증 및 최종 reduce에 이 EMA weight 사용
+```
+
+> ⑦→⑧이 핵심: optimizer가 dead 채널을 살리더라도 pruner가 즉시 다시 0으로 덮어써
+> "soft"하게 죽은 상태를 유지한다. 100 step마다 마스크를 재계산하므로
+> gradient 신호가 꾸준히 강한 채널은 마스크에서 살아남을 수 있다.
 
 ### Pruning 모드: Uniform vs Global (Non-uniform)
 
@@ -288,6 +330,38 @@ metrics = pruner.log_sparsity(model)
 #   }
 ```
 
+**내부 구조 — `_PruneGroup` (블록 1개당 1개 생성):**
+
+```python
+# _make_ffn_group(block.mlp) 호출 시 생성되는 구조
+_PruneGroup(
+    criterion = mlp.fc1.weight,        # 랭킹 기준: fc1 weight의 L2 norm
+
+    targets = [
+        (mlp.fc1.weight, dim=0, 0.0),  # fc1 행(row) 마스킹 — 채널 수 방향
+        (mlp.fc1.bias,   dim=0, 0.0),  # fc1 bias 마스킹
+        (mlp.fc2.weight, dim=1, 0.0),  # fc2 열(col) 마스킹 ← secondary effect
+    ]
+)
+```
+
+fc1 채널(행)을 제거하면 fc2의 같은 인덱스 열도 의미가 없어진다.
+`_PruneGroup`이 둘을 묶어서 같은 마스크로 동시에 처리한다.
+
+**마스크 적용 메커니즘 (`_PruneGroup.apply()`):**
+
+```python
+for tensor, dim, fill in self.targets:
+    shape = [1] * tensor.dim()
+    shape[dim] = -1                  # 마스킹 방향만 채널 수로 펼침
+    m = mask.view(shape)             # mask를 broadcast 가능한 형태로 reshape
+    tensor.data.mul_(m)              # ★ .data: autograd 우회, in-place로 직접 덮어씀
+```
+
+`.data`를 쓰는 이유: `tensor *= m`은 autograd graph에 연산을 추가하지만,
+`tensor.data.mul_(m)`은 graph를 건드리지 않고 메모리 값만 덮어쓴다.
+이 덕분에 optimizer.step() 이후에 gradient graph 손상 없이 weight를 강제로 0으로 만들 수 있다.
+
 **Global mode per-block cap 동작:**
 ```
 블록 5의 max_prune = round(768 × 0.95) = 729개
@@ -346,6 +420,22 @@ mlp_dims = get_reduced_config(ema_model)
 ### `eval_baseline.py` — Pruning 전 Baseline 평가
 
 Pruning 전 pretrained 모델의 정확도를 WandB에 기록. 모델별 권장 data config 자동 적용.
+
+---
+
+### `eval_reduced.py` — Reduced 모델 평가
+
+`reduce.py`로 생성한 `reduced.pt`를 ImageNet val로 평가하고 WandB에 `test/*` 지표 기록.
+
+```bash
+CUDA_VISIBLE_DEVICES=4 python eval_reduced.py \
+  --reduced   ./output/vit_tiny_prune50_global/reduced.pt \
+  --data-path /workspace/etri_iitp/JS/Server_Compression/data/imagenet \
+  --wandb \
+  --wandb-run-name vit_tiny_prune50_global_test
+```
+
+기록 지표: `test/top1`, `test/top5`, `test/loss`, `test/n_params`, `test/compression_pct`
 
 ---
 
@@ -603,17 +693,54 @@ Teacher는 student와 동일한 아키텍처의 pretrained 모델(frozen).
 KL divergence에 `T²` 보정을 곱해야 gradient scale이 CE loss와 동등해짐.
 
 ```python
-# engine.py 핵심 코드
-T = kd_temperature
+# engine.py 핵심 코드 (autocast 블록 내부에서 실행됨)
+with torch.no_grad():
+    teacher_logits = teacher(samples)   # gradient 차단 — Teacher weight 변하지 않음
+
+T = kd_temperature                      # 기본 4.0
 kd_loss = F.kl_div(
-    F.log_softmax(output / T, dim=1),
-    F.softmax(teacher_logits / T, dim=1),
+    F.log_softmax(output / T, dim=1),          # student soft prob (log)
+    F.softmax(teacher_logits / T, dim=1),       # teacher soft prob
     reduction="batchmean",
-) * (T * T)   # ← T² 보정: gradient scale 정규화
+) * (T * T)   # ← T² 보정: /T를 하면 gradient가 1/T²로 작아지므로 복원
+
 loss = (1.0 - kd_alpha) * loss + kd_alpha * kd_loss
 ```
 
-Teacher는 DDP에 포함시키지 않음 (frozen이므로 gradient 불필요).
+**Temperature가 하는 일 (수치 예시):**
+
+```
+T=1 (기본 softmax):    고양이: 0.98  개: 0.01  여우: 0.005  ...
+T=4 (softer):          고양이: 0.61  개: 0.18  여우: 0.09   ...
+                                       ↑ 클래스 간 유사도 정보가 soft label에 살아남음
+```
+
+T를 높이면 teacher가 알고 있는 클래스 간 관계(예: "이 이미지는 고양이지만 여우랑 비슷함")가
+student에게 더 많이 전달된다. 이 정보가 파라미터가 절반인 student가 학습하기 좋은 추가 신호가 된다.
+
+**Teacher 초기화 방식:**
+```python
+# train.py — 학습 시작 시 1회만 실행, 50 epoch 내내 고정
+teacher = timm.create_model(args.model, pretrained=True).to(device)
+teacher.eval()
+for p in teacher.parameters():
+    p.requires_grad_(False)   # gradient 계산 자체를 차단
+```
+
+Teacher는 DDP에 포함시키지 않음 (frozen이므로 gradient 동기화 불필요).
+
+### Soft Pruning — `tensor.data` vs `tensor`
+
+```python
+# pruner.apply() 내부
+tensor.data.mul_(mask)   # ✓ autograd graph 우회, in-place 덮어씀
+
+# tensor.mul_(mask) 와의 차이
+tensor *= mask           # ✗ autograd에 연산 추가 → optimizer.step() 이후 graph 손상
+```
+
+optimizer.step()이 끝난 뒤에 weight를 수정해야 하므로 반드시 `.data`를 써야 한다.
+`.data`로 접근하면 메모리 값만 직접 변경하고 gradient 계산 그래프에는 영향을 주지 않는다.
 
 ### Lazy init
 

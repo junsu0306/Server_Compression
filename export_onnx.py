@@ -32,6 +32,8 @@ def get_args() -> argparse.Namespace:
                    help="배치 차원을 dynamic으로 export (추론 시 임의 배치 가능)")
     p.add_argument("--verify",     action="store_true",
                    help="onnxruntime 으로 출력값 일치 검증")
+    p.add_argument("--num-threads", type=int, default=0,
+                   help="ORT 스레드 수. 0=자동(CPU 코어 수). verify 및 출력 정보에 사용")
     return p.parse_args()
 
 
@@ -73,6 +75,7 @@ def main():
         output_names=["output"],
         dynamic_axes=dynamic_axes,
         do_constant_folding=True,
+        training=torch.onnx.TrainingMode.EVAL,   # 명시적 eval mode
     )
     print("Export 완료.")
 
@@ -82,16 +85,33 @@ def main():
         onnx_model = onnx.load(args.output)
         onnx.checker.check_model(onnx_model)
         print("ONNX graph check: OK")
+        n_nodes = len(onnx_model.graph.node)
+        print(f"  graph nodes: {n_nodes}")
     except ImportError:
         print("(onnx 미설치 — graph check 생략. pip install onnx)")
 
-    # ── onnxruntime 출력값 일치 검증 ───────────────────────────────────────────
+    # ── onnxruntime 출력값 일치 검증 + 스레드 설정 확인 ───────────────────────
     if args.verify:
         try:
             import onnxruntime as ort
             import numpy as np
 
-            sess = ort.InferenceSession(args.output, providers=["CPUExecutionProvider"])
+            # 멀티코어 세션 설정
+            # intra_op_num_threads: 하나의 op(행렬곱 등) 내 병렬 스레드 수
+            # inter_op_num_threads: 독립적인 op들을 동시에 실행하는 스레드 수
+            # 둘 다 0 = ORT가 자동으로 CPU 코어 수에 맞게 결정
+            sess_opts = ort.SessionOptions()
+            sess_opts.intra_op_num_threads = args.num_threads   # 0 = 자동
+            sess_opts.inter_op_num_threads = args.num_threads   # 0 = 자동
+            sess_opts.graph_optimization_level = (
+                ort.GraphOptimizationLevel.ORT_ENABLE_ALL       # 최대 그래프 최적화
+            )
+
+            sess = ort.InferenceSession(
+                args.output,
+                sess_options=sess_opts,
+                providers=["CPUExecutionProvider"],
+            )
             inp  = dummy.numpy()
 
             with torch.no_grad():
@@ -104,6 +124,12 @@ def main():
                 print("         ✓ 출력값 일치 (정상)")
             else:
                 print("         ⚠ 출력값 차이가 큼 — opset 버전 또는 모델 구조 확인 필요")
+
+            # 스레드 설정 확인 출력
+            n_threads = args.num_threads if args.num_threads > 0 else "auto (CPU cores)"
+            print(f"\n[Threading] intra_op={n_threads}  inter_op={n_threads}")
+            print(f"            graph_optimization=ORT_ENABLE_ALL")
+
         except ImportError:
             print("(onnxruntime 미설치 — 출력 검증 생략. pip install onnxruntime)")
 
