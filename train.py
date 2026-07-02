@@ -91,6 +91,8 @@ def get_args() -> argparse.Namespace:
                    help="KD loss 가중치 (0=비활성, 0.5 권장). loss=(1-α)·CE + α·KL")
     p.add_argument("--kd-temperature", type=float, default=4.0,
                    help="KD softening temperature (권장: 3~5)")
+    p.add_argument("--kd-teacher",     default="",
+                   help="Teacher 모델 이름. 비어있으면 student와 동일 아키텍처 사용")
 
     # 출력 / 체크포인트
     p.add_argument("--output-dir",   default="./output")
@@ -313,15 +315,35 @@ def main():
     # ── Teacher (Knowledge Distillation) ──────────────────────────────────────
     teacher = None
     if args.kd_alpha > 0:
+        teacher_name = args.kd_teacher if args.kd_teacher else args.model
         teacher = timm.create_model(
-            args.model, pretrained=True, num_classes=args.num_classes
+            teacher_name, pretrained=True, num_classes=args.num_classes
         ).to(device)
         teacher.eval()
         for p in teacher.parameters():
             p.requires_grad_(False)
+
+        # normalization 불일치 경고
+        if args.kd_teacher and args.kd_teacher != args.model and is_main:
+            student_cfg = timm.data.resolve_model_data_config(
+                timm.create_model(args.model, pretrained=False)
+            )
+            teacher_cfg = timm.data.resolve_model_data_config(teacher)
+            if student_cfg["mean"] != teacher_cfg["mean"]:
+                print(
+                    f"[KD] ⚠ normalization 불일치!\n"
+                    f"     student mean={student_cfg['mean']}  std={student_cfg['std']}\n"
+                    f"     teacher mean={teacher_cfg['mean']}  std={teacher_cfg['std']}\n"
+                    f"     DataLoader는 student 기준으로 생성됩니다. "
+                    f"teacher 성능이 저하될 수 있습니다."
+                )
+            else:
+                print(f"[KD] normalization 일치 ✓  mean={student_cfg['mean']}")
+
         if is_main:
+            n_teacher = sum(p.numel() for p in teacher.parameters())
             print(
-                f"[KD] teacher={args.model}  "
+                f"[KD] teacher={teacher_name}  params={n_teacher:,}  "
                 f"alpha={args.kd_alpha}  T={args.kd_temperature}"
             )
 
