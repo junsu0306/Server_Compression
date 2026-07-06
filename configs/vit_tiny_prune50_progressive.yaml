@@ -1,0 +1,45 @@
+# ViT-Tiny  |  50% compression  |  Progressive Pruning + KD
+#
+# 실행 (GPU 6,7):
+#   CUDA_VISIBLE_DEVICES=6,7 torchrun --nproc_per_node=2 train.py \
+#     --config configs/vit_tiny_prune50_progressive.yaml
+
+model: vit_tiny_patch16_224
+data_path: /workspace/etri_iitp/JS/Server_Compression/data/imagenet
+
+# ── 학습 ──────────────────────────────────────────────────────────
+epochs: 50
+batch_size: 256
+lr: 5.0e-5
+weight_decay: 0.05
+clip_grad: 1.0
+warmup_epochs: 5
+min_lr: 1.0e-6
+smoothing: 0.1
+amp: true
+num_workers: 8
+
+# ── EMA ───────────────────────────────────────────────────────────
+model_ema: true
+model_ema_decay: 0.9998
+
+# ── Soft Pruning (Progressive) ────────────────────────────────────
+target_compression: 0.50
+pruning_max_sparsity: 0.95
+prune_refresh_steps: 100
+pruning_mode: global
+prune_warmup_epochs: 5     # epoch 0~4: pruning 없이 정상 학습 (LR warmup과 동기화)
+prune_ramp_epochs: 20      # epoch 5~24: 0% → 80.53% 점진적 증가
+                            # epoch 25~49: 80.53% 유지
+
+# ── Knowledge Distillation ────────────────────────────────────────
+kd_alpha: 0.5
+kd_temperature: 4.0
+
+# ── 출력 ──────────────────────────────────────────────────────────
+output_dir: ./output/vit_tiny_prune50_progressive
+
+# ── WandB ─────────────────────────────────────────────────────────
+wandb: true
+wandb_project: vit-pruning
+wandb_run_name: "vit_tiny_prune50_progressive"

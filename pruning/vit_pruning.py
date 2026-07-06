@@ -177,6 +177,8 @@ class ViTPruner:
         sparsity: float | None = None,
         index_refresh_steps: int = 100,
         mode: str = "global",
+        warmup_epochs: int = 0,
+        ramp_epochs: int = 0,
     ) -> None:
         self.target_compression  = float(target_compression)
         self.max_sparsity        = float(max_sparsity)
@@ -184,28 +186,42 @@ class ViTPruner:
         self.mode                = mode
         self._step               = 0
         self._groups: list[_PruneGroup] = []  # lazy init
+        self._warmup_epochs      = int(warmup_epochs)
+        self._ramp_epochs        = int(ramp_epochs)
+        self._current_epoch      = 0
 
         if sparsity is not None:
-            self.sparsity = float(sparsity)
+            self._target_sparsity = float(sparsity)
         else:
-            self.sparsity = _find_sparsity_by_bisection(
+            self._target_sparsity = _find_sparsity_by_bisection(
                 model, self.target_compression, self.max_sparsity
             )
 
+        # Progressive mode: epoch 0에서는 sparsity=0으로 시작
+        progressive = (warmup_epochs > 0 or ramp_epochs > 0)
+        self.sparsity = 0.0 if progressive else self._target_sparsity
+
         total = sum(p.numel() for p in model.parameters())
-        est   = _estimate_total_removed(model, self.sparsity)
+        est   = _estimate_total_removed(model, self._target_sparsity)
         rate  = 100.0 * est / max(total, 1)
         n_prune_total = sum(
-            _calc_n_prune(block.mlp.fc1.weight.shape[0], self.sparsity)
+            _calc_n_prune(block.mlp.fc1.weight.shape[0], self._target_sparsity)
             for block in model.blocks
         )
         print(
             f"[ViTPruner] target={self.target_compression*100:.1f}%  "
-            f"equiv_sparsity={self.sparsity:.4f}  "
+            f"equiv_sparsity={self._target_sparsity:.4f}  "
             f"estimated_compression={rate:.2f}%  "
             f"total_prune_channels={n_prune_total}  "
             f"mode={self.mode}"
         )
+        if progressive:
+            print(
+                f"[ViTPruner] progressive=ON  "
+                f"warmup={self._warmup_epochs}  ramp={self._ramp_epochs}  "
+                f"(epoch {self._warmup_epochs}~"
+                f"{self._warmup_epochs + self._ramp_epochs}에서 점진적 증가)"
+            )
 
     # ── 내부 ────────────────────────────────────────────────────────────────────
 
@@ -291,6 +307,42 @@ class ViTPruner:
                 mask[torch.argsort(norms, descending=True)[:MIN_SURVIVE]] = 1.0
             g.set_mask(mask)
 
+    # ── Progressive sparsity 스케줄 ────────────────────────────────────────────
+
+    def _scheduled_sparsity(self, epoch: int) -> float:
+        """Zhu & Gupta (2018) 스타일 cubic schedule.
+
+        epoch < warmup_epochs:          sparsity = 0
+        warmup <= epoch < warmup+ramp:  0 → target  (cubic ease-out)
+        epoch >= warmup+ramp:           sparsity = target
+        """
+        if self._ramp_epochs == 0 and self._warmup_epochs == 0:
+            return self._target_sparsity
+        if epoch < self._warmup_epochs:
+            return 0.0
+        ramp_end = self._warmup_epochs + self._ramp_epochs
+        if epoch >= ramp_end:
+            return self._target_sparsity
+        progress = (epoch - self._warmup_epochs) / max(self._ramp_epochs, 1)
+        # cubic ease-out: 1-(1-t)^3 → 초반에 빠르게 증가, 후반에 완만
+        return self._target_sparsity * (1.0 - (1.0 - progress) ** 3)
+
+    def set_epoch(self, epoch: int) -> None:
+        """에포크 시작 전에 train.py에서 호출. sparsity 스케줄 업데이트."""
+        self._current_epoch = epoch
+        new_sp = self._scheduled_sparsity(epoch)
+        if abs(new_sp - self.sparsity) > 1e-7:
+            old_sp = self.sparsity
+            self.sparsity = new_sp
+            # 이미 init된 상태라면 즉시 마스크 재계산
+            if self._groups:
+                self._do_refresh()
+            print(
+                f"[ViTPruner] epoch={epoch}  "
+                f"sparsity: {old_sp:.4f} → {new_sp:.4f}"
+                f"  ({new_sp / self._target_sparsity * 100:.1f}% of target)"
+            )
+
     # ── 공개 API ────────────────────────────────────────────────────────────────
 
     def apply(self, model: nn.Module) -> None:
@@ -343,22 +395,31 @@ class ViTPruner:
         result["pruning/zero_filters"]     = float(n_zero)
         result["pruning/prunable_filters"] = float(n_total)
         result["pruning/actual_sparsity"]  = n_zero / max(n_total, 1)
-        result["pruning/target_sparsity"]  = self.sparsity
+        result["pruning/target_sparsity"]  = self._target_sparsity
+        result["pruning/current_sparsity"] = self.sparsity
         return result
 
     def state_dict(self) -> dict:
         return {
             "sparsity":            self.sparsity,
+            "target_sparsity":     self._target_sparsity,
             "target_compression":  self.target_compression,
             "step":                self._step,
             "index_refresh_steps": self.index_refresh_steps,
             "mode":                self.mode,
+            "warmup_epochs":       self._warmup_epochs,
+            "ramp_epochs":         self._ramp_epochs,
+            "current_epoch":       self._current_epoch,
         }
 
     def load_state_dict(self, state: dict) -> None:
+        self._target_sparsity    = state.get("target_sparsity", state["sparsity"])
         self.sparsity            = state["sparsity"]
         self.target_compression  = state["target_compression"]
         self._step               = state["step"]
         self.index_refresh_steps = state["index_refresh_steps"]
         self.mode                = state.get("mode", "global")
+        self._warmup_epochs      = state.get("warmup_epochs", 0)
+        self._ramp_epochs        = state.get("ramp_epochs", 0)
+        self._current_epoch      = state.get("current_epoch", 0)
         self._groups             = []

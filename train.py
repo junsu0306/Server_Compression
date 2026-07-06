@@ -85,6 +85,10 @@ def get_args() -> argparse.Namespace:
     p.add_argument("--pruning-mode",         default="global",
                    choices=["global", "uniform"],
                    help="global=non-uniform(권장), uniform=모든 블록 동일 sparsity")
+    p.add_argument("--prune-warmup-epochs",  type=int,   default=0,
+                   help="pruning 시작 전 유예 epoch 수 (0=즉시 적용)")
+    p.add_argument("--prune-ramp-epochs",    type=int,   default=0,
+                   help="sparsity 점진 증가 epoch 수 (0=즉시 target 적용)")
 
     # Knowledge Distillation
     p.add_argument("--kd-alpha",       type=float, default=0.0,
@@ -356,6 +360,8 @@ def main():
             max_sparsity=args.pruning_max_sparsity,
             index_refresh_steps=args.prune_refresh_steps,
             mode=args.pruning_mode,
+            warmup_epochs=args.prune_warmup_epochs,
+            ramp_epochs=args.prune_ramp_epochs,
         )
 
     # ── Optimizer & Scheduler ──────────────────────────────────────────────────
@@ -393,6 +399,10 @@ def main():
     for epoch in range(start_epoch, args.epochs):
         if args.distributed:
             train_sampler.set_epoch(epoch)
+
+        # Progressive pruning: 에포크 시작 전 sparsity 스케줄 업데이트
+        if pruner is not None:
+            pruner.set_epoch(epoch)
 
         if is_main:
             print(f"\n── Epoch {epoch}/{args.epochs - 1}  "
