@@ -85,6 +85,9 @@ def get_args() -> argparse.Namespace:
     p.add_argument("--pruning-mode",         default="global",
                    choices=["global", "uniform"],
                    help="global=non-uniform(권장), uniform=모든 블록 동일 sparsity")
+    p.add_argument("--pruning-importance",   default="l2",
+                   choices=["l2", "taylor"],
+                   help="채널 중요도 기준. l2=weight크기, taylor=|w×∇w| (gradient 재활용, 추가비용 없음)")
     p.add_argument("--prune-warmup-epochs",  type=int,   default=0,
                    help="pruning 시작 전 유예 epoch 수 (0=즉시 적용)")
     p.add_argument("--prune-ramp-epochs",    type=int,   default=0,
@@ -362,6 +365,7 @@ def main():
             mode=args.pruning_mode,
             warmup_epochs=args.prune_warmup_epochs,
             ramp_epochs=args.prune_ramp_epochs,
+            importance=args.pruning_importance,
         )
 
     # ── Optimizer & Scheduler ──────────────────────────────────────────────────

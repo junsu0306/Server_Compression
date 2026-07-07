@@ -3,10 +3,16 @@ timm ViT / DeiT FFN Soft Pruning
 
 pruning_mode:
     "uniform" — 모든 블록에 동일한 sparsity 적용 (기존 방식)
-    "global"  — 전체 블록 채널을 L2 norm으로 global 랭킹, 자동 non-uniform 분배 (기본값)
+    "global"  — 전체 블록 채널을 global 랭킹, 자동 non-uniform 분배 (기본값)
+
+importance:
+    "l2"     — fc1.weight 행벡터의 L2 norm (weight magnitude)
+    "taylor" — |fc1.weight × ∇fc1.weight|의 채널합 (gradient × weight)
+               backprop 후 param.grad를 재활용하므로 추가 연산 없음.
+               grad가 없는 첫 step은 L2로 fallback.
 
 사용법:
-    pruner = ViTPruner(model, target_compression=0.50, mode="global")
+    pruner = ViTPruner(model, target_compression=0.50, mode="global", importance="taylor")
 
     for epoch in range(epochs):
         for samples, targets in loader:
@@ -105,14 +111,18 @@ class _PruneGroup:
     targets:   List[Tuple[torch.Tensor, int, float]]  # (tensor, dim, fill)
     _mask:     torch.Tensor | None = field(default=None, repr=False)
 
-    def refresh(self, sparsity: float) -> None:
-        """Per-block L2 norm topk 기반 마스크 재계산 (uniform mode 전용)."""
+    def refresh(self, sparsity: float, scores: torch.Tensor | None = None) -> None:
+        """Per-block 중요도 기반 마스크 재계산 (uniform mode 전용).
+
+        scores: 외부에서 미리 계산된 채널 중요도 (낮을수록 제거). None이면 L2 fallback.
+        """
         n = self.criterion.shape[0]
         n_prune = _calc_n_prune(n, sparsity)
         mask = torch.ones(n, dtype=torch.float32, device=self.criterion.device)
         if n_prune > 0:
-            norms = torch.norm(self.criterion.detach().reshape(n, -1), dim=1)
-            _, idx = torch.topk(norms, n_prune, largest=False)
+            if scores is None:
+                scores = torch.norm(self.criterion.detach().reshape(n, -1), dim=1)
+            _, idx = torch.topk(scores, n_prune, largest=False)
             mask[idx] = 0.0
         self._mask = mask
 
@@ -160,6 +170,7 @@ class ViTPruner:
         sparsity:            직접 지정 시 이진탐색 생략
         index_refresh_steps: 마스크 재계산 간격 (step 단위). 0=매 step.
         mode:                "global" (non-uniform, 기본값) | "uniform"
+        importance:          "l2" (weight magnitude) | "taylor" (gradient × weight)
 
     mode 비교:
         uniform — 각 블록 독립적으로 하위 sparsity% 채널 제거
@@ -167,6 +178,12 @@ class ViTPruner:
         global  — 전체 블록의 채널을 한번에 global 랭킹
                   중요도가 높은 블록은 채널을 더 많이 보존
                   중복이 많은 블록은 더 많이 잘림 (자동 non-uniform)
+
+    importance 비교:
+        l2     — ||fc1.weight||₂ 채널 크기만 봄. 빠르고 안정적.
+        taylor — |fc1.weight × ∇fc1.weight|. loss에 대한 채널 기여도를 1차 근사.
+                 backprop gradient를 재활용하므로 추가 forward/backward 불필요.
+                 grad가 없는 첫 step은 l2로 fallback.
     """
 
     def __init__(
@@ -179,11 +196,13 @@ class ViTPruner:
         mode: str = "global",
         warmup_epochs: int = 0,
         ramp_epochs: int = 0,
+        importance: str = "l2",
     ) -> None:
         self.target_compression  = float(target_compression)
         self.max_sparsity        = float(max_sparsity)
         self.index_refresh_steps = int(index_refresh_steps)
         self.mode                = mode
+        self.importance          = importance
         self._step               = 0
         self._groups: list[_PruneGroup] = []  # lazy init
         self._warmup_epochs      = int(warmup_epochs)
@@ -213,7 +232,7 @@ class ViTPruner:
             f"equiv_sparsity={self._target_sparsity:.4f}  "
             f"estimated_compression={rate:.2f}%  "
             f"total_prune_channels={n_prune_total}  "
-            f"mode={self.mode}"
+            f"mode={self.mode}  importance={self.importance}"
         )
         if progressive:
             print(
@@ -224,6 +243,21 @@ class ViTPruner:
             )
 
     # ── 내부 ────────────────────────────────────────────────────────────────────
+
+    def _channel_importance(self, weight: torch.Tensor) -> torch.Tensor:
+        """fc1.weight 행(=출력 채널)별 중요도 계산.
+
+        taylor: |w × ∇w|의 채널합. grad가 없으면 l2로 fallback.
+        l2:     ||w||₂ 채널 크기.
+
+        AMP scale은 전체 채널에 공통 적용되므로 상대 랭킹에 영향 없음.
+        """
+        n = weight.shape[0]
+        w = weight.detach().reshape(n, -1)
+        if self.importance == "taylor" and weight.grad is not None:
+            g = weight.grad.detach().reshape(n, -1)
+            return (w * g).abs().sum(dim=1)
+        return torch.norm(w, dim=1)
 
     def _collect_groups(self, model: nn.Module) -> list[_PruneGroup]:
         return [_make_ffn_group(block.mlp) for block in model.blocks]
@@ -238,7 +272,8 @@ class ViTPruner:
             self._refresh_global()
         else:
             for g in self._groups:
-                g.refresh(self.sparsity)
+                scores = self._channel_importance(g.criterion)
+                g.refresh(self.sparsity, scores=scores)
 
     def _refresh_global(self) -> None:
         """Global channel ranking — non-uniform pruning.
@@ -254,7 +289,7 @@ class ViTPruner:
         device = self._groups[0].criterion.device
 
         norms_list = [
-            torch.norm(g.criterion.detach().reshape(g.criterion.shape[0], -1), dim=1)
+            self._channel_importance(g.criterion)
             for g in self._groups
         ]
         group_sizes = [norms.shape[0] for norms in norms_list]
@@ -300,11 +335,12 @@ class ViTPruner:
                 masks[b][local_idx] = 0.0
 
         # MIN_SURVIVE 최종 보장 후 mask 설정
-        for g, mask, norms in zip(self._groups, masks, norms_list):
+        # (중요도 높은 채널 상위 MIN_SURVIVE개 보존)
+        for g, mask, scores in zip(self._groups, masks, norms_list):
             if int(mask.sum().item()) < MIN_SURVIVE:
-                n = norms.shape[0]
+                n = scores.shape[0]
                 mask = torch.zeros(n, dtype=torch.float32, device=device)
-                mask[torch.argsort(norms, descending=True)[:MIN_SURVIVE]] = 1.0
+                mask[torch.argsort(scores, descending=True)[:MIN_SURVIVE]] = 1.0
             g.set_mask(mask)
 
     # ── Progressive sparsity 스케줄 ────────────────────────────────────────────
@@ -407,6 +443,7 @@ class ViTPruner:
             "step":                self._step,
             "index_refresh_steps": self.index_refresh_steps,
             "mode":                self.mode,
+            "importance":          self.importance,
             "warmup_epochs":       self._warmup_epochs,
             "ramp_epochs":         self._ramp_epochs,
             "current_epoch":       self._current_epoch,
@@ -419,6 +456,7 @@ class ViTPruner:
         self._step               = state["step"]
         self.index_refresh_steps = state["index_refresh_steps"]
         self.mode                = state.get("mode", "global")
+        self.importance          = state.get("importance", "l2")
         self._warmup_epochs      = state.get("warmup_epochs", 0)
         self._ramp_epochs        = state.get("ramp_epochs", 0)
         self._current_epoch      = state.get("current_epoch", 0)
