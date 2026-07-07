@@ -38,9 +38,9 @@ kd_alpha: 0.5
 kd_temperature: 4.0
 
 # ── 출력 ──────────────────────────────────────────────────────────
-output_dir: ./output/vit_small_prune50_progressive
+output_dir: ./output/vit_small_prune50_progressive_taylor
 
 # ── WandB ─────────────────────────────────────────────────────────
 wandb: true
 wandb_project: vit-pruning
-wandb_run_name: "vit_small_prune50_progressive"
+wandb_run_name: "vit_small_prune50_progressive_taylor"
