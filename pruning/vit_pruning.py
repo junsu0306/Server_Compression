@@ -171,6 +171,7 @@ class ViTPruner:
         index_refresh_steps: 마스크 재계산 간격 (step 단위). 0=매 step.
         mode:                "global" (non-uniform, 기본값) | "uniform"
         importance:          "l2" (weight magnitude) | "taylor" (gradient × weight)
+        grad_ema_beta:       taylor EMA 감쇠율 (기본 0.9 ≈ 최근 10 step 평균)
 
     mode 비교:
         uniform — 각 블록 독립적으로 하위 sparsity% 채널 제거
@@ -181,9 +182,10 @@ class ViTPruner:
 
     importance 비교:
         l2     — ||fc1.weight||₂ 채널 크기만 봄. 빠르고 안정적.
-        taylor — |fc1.weight × ∇fc1.weight|. loss에 대한 채널 기여도를 1차 근사.
+        taylor — |fc1.weight × ∇fc1.weight|의 채널합을 grad_ema_beta EMA로 누적.
                  backprop gradient를 재활용하므로 추가 forward/backward 불필요.
-                 grad가 없는 첫 step은 l2로 fallback.
+                 EMA 덕분에 single-batch gradient noise를 평균화.
+                 grad가 한 번도 없으면 l2로 fallback.
     """
 
     def __init__(
@@ -197,12 +199,15 @@ class ViTPruner:
         warmup_epochs: int = 0,
         ramp_epochs: int = 0,
         importance: str = "l2",
+        grad_ema_beta: float = 0.9,
     ) -> None:
         self.target_compression  = float(target_compression)
         self.max_sparsity        = float(max_sparsity)
         self.index_refresh_steps = int(index_refresh_steps)
         self.mode                = mode
         self.importance          = importance
+        self.grad_ema_beta       = float(grad_ema_beta)
+        self._grad_ema:  dict[int, torch.Tensor] = {}  # id(weight) → EMA Taylor score
         self._step               = 0
         self._groups: list[_PruneGroup] = []  # lazy init
         self._warmup_epochs      = int(warmup_epochs)
@@ -227,12 +232,15 @@ class ViTPruner:
             _calc_n_prune(block.mlp.fc1.weight.shape[0], self._target_sparsity)
             for block in model.blocks
         )
+        imp_str = self.importance
+        if self.importance == "taylor":
+            imp_str += f"(ema_beta={self.grad_ema_beta})"
         print(
             f"[ViTPruner] target={self.target_compression*100:.1f}%  "
             f"equiv_sparsity={self._target_sparsity:.4f}  "
             f"estimated_compression={rate:.2f}%  "
             f"total_prune_channels={n_prune_total}  "
-            f"mode={self.mode}  importance={self.importance}"
+            f"mode={self.mode}  importance={imp_str}"
         )
         if progressive:
             print(
@@ -247,16 +255,30 @@ class ViTPruner:
     def _channel_importance(self, weight: torch.Tensor) -> torch.Tensor:
         """fc1.weight 행(=출력 채널)별 중요도 계산.
 
-        taylor: |w × ∇w|의 채널합. grad가 없으면 l2로 fallback.
+        taylor: |w × ∇w|의 채널합을 EMA로 누적. Single-batch noise 평균화.
+                grad가 한 번도 없으면 l2로 fallback.
+                grad가 있으면 EMA를 업데이트하고 EMA 값을 반환.
         l2:     ||w||₂ 채널 크기.
 
         AMP scale은 전체 채널에 공통 적용되므로 상대 랭킹에 영향 없음.
         """
         n = weight.shape[0]
         w = weight.detach().reshape(n, -1)
-        if self.importance == "taylor" and weight.grad is not None:
-            g = weight.grad.detach().reshape(n, -1)
-            return (w * g).abs().sum(dim=1)
+
+        if self.importance == "taylor":
+            pid = id(weight)
+            if weight.grad is not None:
+                g = weight.grad.detach().reshape(n, -1)
+                taylor_now = (w * g).abs().sum(dim=1)
+                if pid not in self._grad_ema:
+                    self._grad_ema[pid] = taylor_now
+                else:
+                    b = self.grad_ema_beta
+                    self._grad_ema[pid] = b * self._grad_ema[pid] + (1.0 - b) * taylor_now
+            if pid in self._grad_ema:
+                return self._grad_ema[pid]
+            # grad 한 번도 없음 → L2 fallback
+
         return torch.norm(w, dim=1)
 
     def _collect_groups(self, model: nn.Module) -> list[_PruneGroup]:
@@ -444,6 +466,7 @@ class ViTPruner:
             "index_refresh_steps": self.index_refresh_steps,
             "mode":                self.mode,
             "importance":          self.importance,
+            "grad_ema_beta":       self.grad_ema_beta,
             "warmup_epochs":       self._warmup_epochs,
             "ramp_epochs":         self._ramp_epochs,
             "current_epoch":       self._current_epoch,
@@ -457,7 +480,9 @@ class ViTPruner:
         self.index_refresh_steps = state["index_refresh_steps"]
         self.mode                = state.get("mode", "global")
         self.importance          = state.get("importance", "l2")
+        self.grad_ema_beta       = state.get("grad_ema_beta", 0.9)
         self._warmup_epochs      = state.get("warmup_epochs", 0)
         self._ramp_epochs        = state.get("ramp_epochs", 0)
         self._current_epoch      = state.get("current_epoch", 0)
         self._groups             = []
+        self._grad_ema           = {}  # resume 시 EMA는 초기화 (첫 step에서 재누적)
