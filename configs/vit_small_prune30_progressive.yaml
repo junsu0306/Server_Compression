@@ -1,0 +1,46 @@
+# ViT-Small  |  30% compression  |  Progressive + KD + Taylor EMA
+#
+# 실행 (GPU 4,5):
+#   CUDA_VISIBLE_DEVICES=4,5 torchrun --nproc_per_node=2 train.py \
+#     --config configs/vit_small_prune30_progressive.yaml
+
+model: vit_small_patch16_224
+data_path: /workspace/etri_iitp/JS/Server_Compression/data/imagenet
+
+# ── 학습 ──────────────────────────────────────────────────────────
+epochs: 50
+batch_size: 128        # per GPU  →  총 256 (×2 GPU)
+lr: 5.0e-5
+weight_decay: 0.05
+clip_grad: 1.0
+warmup_epochs: 5
+min_lr: 1.0e-6
+smoothing: 0.1
+amp: true
+num_workers: 8
+
+# ── EMA ───────────────────────────────────────────────────────────
+model_ema: true
+model_ema_decay: 0.9998
+
+# ── Soft Pruning (Progressive) ────────────────────────────────────
+target_compression: 0.30    # G_FFN sparsity ≈ 0.4665
+pruning_max_sparsity: 0.95
+prune_refresh_steps: 100
+pruning_mode: global
+pruning_importance: taylor  # |w×∇w| gradient EMA, 추가 연산 없음
+prune_warmup_epochs: 5      # epoch 0~4: pruning 없이 정상 학습
+prune_ramp_epochs: 20       # epoch 5~24: 0% → 46.65% 점진적 증가
+                             # epoch 25~49: 46.65% 유지
+
+# ── Knowledge Distillation ────────────────────────────────────────
+kd_alpha: 0.5
+kd_temperature: 4.0
+
+# ── 출력 ──────────────────────────────────────────────────────────
+output_dir: ./output/vit_small_prune30_progressive_taylor
+
+# ── WandB ─────────────────────────────────────────────────────────
+wandb: true
+wandb_project: vit-pruning
+wandb_run_name: "vit_small_prune30_progressive_taylor"
