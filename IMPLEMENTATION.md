@@ -1,9 +1,13 @@
 # ViT Soft Pruning 구현 보고서
 
-> 작성 기준: 2026-07  
+> 작성 기준: 2026-07 (Stage 2 Token Pruning 추가 반영)  
 > 환경: timm 1.0.27 · torch 2.9.1 · Python 3.13.5  
 > 서버: `root@59bfae69b3a9:/workspace/etri_iitp/JS/Server_Compression`  
-> 레퍼런스: EfficientViT Soft Pruning (동일 방법론을 timm ViT에 이식)
+> 레퍼런스:
+>   - Stage 1 (channel pruning): EfficientViT Soft Pruning (동일 방법론을 timm ViT에 이식)
+>   - Stage 2 (token pruning): EViT — Liang et al., ICLR 2022,
+>     [youweiliang/evit](https://github.com/youweiliang/evit)
+>     (알고리즘만 참고해 timm 1.0.x 호환 형태로 재구현 — repo 코드 직접 이식 아님, §14.1 참고)
 
 ---
 
@@ -22,6 +26,7 @@
 11. [WandB 모니터링 지표](#11-wandb-모니터링-지표)
 12. [핵심 설계 결정 사항](#12-핵심-설계-결정-사항)
 13. [주의사항 & 트러블슈팅](#13-주의사항--트러블슈팅)
+14. [Stage 2 — EViT Token Pruning](#14-stage-2--evit-token-pruning)
 
 ---
 
@@ -35,17 +40,22 @@ Server_Compression/
 │   ├── vit_small_prune50.yaml
 │   ├── vit_small_prune30.yaml
 │   ├── vit_tiny_prune50_progressive.yaml        ← Global + KD + Progressive + Taylor EMA
-│   └── vit_small_prune50_progressive.yaml       ← Global + KD + Progressive + Taylor EMA
+│   ├── vit_small_prune50_progressive.yaml       ← Global + KD + Progressive + Taylor EMA
+│   ├── vit_tiny_token_prune70.yaml              ← Stage 2: EViT Token Pruning (§14)
+│   └── vit_small_token_prune70.yaml             ← Stage 2: EViT Token Pruning (§14)
 ├── pruning/
 │   ├── __init__.py
-│   ├── vit_pruning.py           ← ViTPruner: Soft Pruning 컨트롤러
-│   └── vit_reducing.py          ← reduce_vit_model: Dense 변환
-├── engine.py                    ← train_one_epoch / evaluate
-├── train.py                     ← 학습 진입점 (단일GPU / DDP, --config 지원)
-├── reduce.py                    ← Reducing CLI
+│   ├── vit_pruning.py           ← ViTPruner: Soft Pruning 컨트롤러 (channel, Stage 1)
+│   ├── vit_reducing.py          ← reduce_vit_model: Dense 변환 (Stage 1 → 완료 후)
+│   └── token_pruning.py         ← EvitTokenPruner: EViT Token Pruning (sequence, Stage 2)
+├── engine.py                    ← train_one_epoch / evaluate (Stage 1/2 공용)
+├── train.py                     ← Stage 1 학습 진입점 (단일GPU / DDP, --config 지원)
+├── reduce.py                    ← Reducing CLI (Stage 1 완료 후)
 ├── eval_baseline.py             ← Pruning 전 pretrained 모델 baseline 평가
-├── eval_reduced.py              ← Reduced 모델 val 평가 → WandB test 기록
-├── export_onnx.py               ← Reduced 모델 → ONNX 변환
+├── eval_reduced.py              ← Stage 1 Reduced 모델 val 평가 → WandB test 기록
+├── train_token_pruning.py       ← Stage 2 학습 진입점 (reduced.pt 입력)
+├── eval_token_pruned.py         ← Stage 2 Token Pruned 모델 val 평가 → WandB test 기록
+├── export_onnx.py               ← Reduced / Token Pruned 모델 → ONNX 변환 (자동 판별)
 ├── measure_memory.py            ← 아키텍처 분석 & 파라미터 프로파일링
 ├── data/
 │   └── imagenet/                ← ImageNet (서버에만 존재, gitignore)
@@ -616,10 +626,13 @@ AFTER:  2,862,256 params  (49.94% removed)
 
 ## 9. ONNX 변환
 
+> **주의**: `export_onnx.py`의 `--reduced` 인자는 Stage 2(§14) 추가 시
+> `--input`으로 이름이 바뀌었다 (reduced.pt / token_pruned_best.pt 공용 로더).
+
 ```bash
 python export_onnx.py \
-  --reduced ./output/vit_tiny_prune50_progressive_taylor/reduced.pt \
-  --output  ./output/vit_tiny_prune50_progressive_taylor/reduced.onnx \
+  --input  ./output/vit_tiny_prune50_progressive_taylor/reduced.pt \
+  --output ./output/vit_tiny_prune50_progressive_taylor/reduced.onnx \
   --verify
 ```
 
@@ -836,4 +849,229 @@ python measure_memory.py
 
 ---
 
+## 14. Stage 2 — EViT Token Pruning
+
+> 구현 파일: `pruning/token_pruning.py`, `train_token_pruning.py`, `eval_token_pruned.py`,
+> `export_onnx.py` (공용화)  
+> config 예시: `configs/vit_tiny_token_prune70.yaml`, `configs/vit_small_token_prune70.yaml`
+
+### 14.1 왜, 그리고 무엇을 이식했는가
+
+Stage 1(channel pruning)은 FFN의 **폭(width)**을 줄인다. Stage 2는 **시퀀스 길이
+(패치 토큰 개수)**를 줄인다 — 서로 직교하는 압축 축이라 같은 backbone에 순차
+적용 가능하다.
+
+레퍼런스는 [youweiliang/evit](https://github.com/youweiliang/evit) (EViT,
+Liang et al., ICLR 2022)이지만, **저장소를 그대로 이식하지 않았다.** 원 저장소는
+`torch==1.9.0`, `timm==0.4.12` 기준으로 timm의 `Attention`/`Block`을 통째로
+포크해서 고쳐놓은 코드라, 지금 쓰는 `timm==1.0.27`과 구조가 크게 다르다
+(LayerScale, `fused_attn`/`F.scaled_dot_product_attention` 도입 등). 그래서
+**알고리즘(CLS-attention 기반 top-k 선택 + fused token)만 가져오고, 구현은
+현재 timm 버전에 맞게 새로 짰다.**
+
+가장 중요한 차이점 하나: timm 1.0.x의 `Attention.forward`는 기본적으로
+`fused_attn=True`라 `F.scaled_dot_product_attention`을 쓰며, 이 경로는 attention
+행렬을 아예 만들지 않는다. 즉 EViT가 필요로 하는 "CLS→patch attention score"를
+얻을 수 없다. 여기서 두 가지 선택지가 있었다:
+
+1. `fused_attn`을 강제로 끄고 `Attention.forward` 전체를 eager 모드로 재구현
+2. `Attention.forward`는 그대로 두고, CLS attention score만 별도로 계산
+
+**2번을 선택했다.** 1번은 원본 attention 출력(x)을 손으로 재현해야 하는데,
+사소한 구현 실수(reshape/permute 순서, scale 위치 등)가 조용히 정확도를 깎아먹을
+위험이 있다. 2번은 `self.attn.qkv` Linear를 한 번 더 통과시켜 `q, k`만 뽑고
+CLS row(`q[:, :, 0:1, :] @ k.T`)만 계산하는 것이라, 원본 attention 경로를 전혀
+건드리지 않는다. 추가 비용은 O(N) 크기의 작은 matmul 하나뿐 — 전체 attention의
+O(N²) 대비 무시할 수준이다.
+
+### 14.2 파이프라인 순서 — 왜 reduced 모델을 대상으로 하는가
+
+```
+[Stage 1] Soft channel pruning + KD (train.py)
+    → checkpoint_best.pt
+
+[Reduce] reduce.py
+    → reduced.pt   (FFN이 물리적으로 축소된 순수 Dense 모델)
+
+[Stage 2] EViT Token Pruning fine-tuning (train_token_pruning.py)
+    → reduced.pt를 시작점으로 로드
+    → checkpoint_last/best.pt (재개용) + token_pruned_best.pt (배포용)
+```
+
+동시 진행(같은 학습 루프에서 channel pruning + token pruning)이 아니라 **순차
+2단계**로 설계했다. 이유:
+
+- Channel pruning만으로도 ViT-Small에서 epoch 20 근처 collapse가 관찰됐고
+  (§13-❹), Taylor EMA로 겨우 안정화했다. 여기에 토큰 단위 동적 변화까지 같은
+  루프에서 동시에 켜면 val/top1 하락의 원인이 sparsity 스케줄 때문인지 keep_rate
+  스케줄 때문인지 구분할 수 없다.
+- `reduce.py` 완료 후 결과물은 이미 검증된 안정적인 Dense 모델이다. EViT 원 논문도
+  잘 학습된 dense backbone 위에 token pruning을 얹어 짧게 fine-tuning하는 방식을
+  쓴다 — 여기서는 그 backbone 자리에 "channel-pruned dense 모델"을 놓은 것뿐이다.
+- 두 메커니즘은 서로 다른 텐서 축(FFN width vs. sequence length)에서 작동하고,
+  channel pruning은 QKV/proj를 건드리지 않으므로(§4의 G_QKV, G_PROJ는 pruning
+  대상이 아님) embed_dim이 그대로 유지돼 순서 종속성 문제가 없다.
+
+### 14.3 알고리즘 — CLS Attention 기반 Token 선택 + Fusion
+
+선택된 일부 block(기본: `depth // 4` 등분 지점, 12-block 모델이면 block 3, 6, 9)에서:
+
+```
+① CLS attention score 계산 (attn.forward는 건드리지 않고 별도 계산)
+   x_norm = norm1(x)
+   attn_out = attn(x_norm)                    ← 원본 그대로, fused_attn 유지
+   cls_attn = CLS→patch attention score        ← qkv Linear 재사용해 별도 계산
+                                                  (B, N-1), head 평균, softmax
+
+② 잔차 연결 (원본과 동일)
+   x = x + drop_path1(ls1(attn_out))
+
+③ Token 선택 (keep_rate < 1인 block만)
+   n_keep = ceil((N-1) × keep_rate)            ← 모든 입력에 대해 동일한 상수!
+   top-k index = topk(cls_attn, n_keep)         ← "어떤" 토큰인지는 입력마다 다름
+   x_kept = gather(x[:, 1:], top-k index)
+
+④ Fusion (fuse_token=True 시)
+   버려지는 (N-1-n_keep)개 토큰을 각자의 cls_attn 가중치로 가중합 →
+   fused_token 1개로 합쳐서 유지 (완전 폐기 대비 정보 손실 최소화)
+   x = cat([CLS, x_kept, fused_token])
+   → 다음 block으로 넘어가는 시퀀스 길이 = 1(CLS) + n_keep + 1(fused) = n_keep + 2
+
+⑤ MLP (원본과 동일, 단 짧아진 시퀀스에 대해)
+   x = x + drop_path2(ls2(mlp(norm2(x))))
+```
+
+`keep_rate`가 고정 비율이고 패치 개수 N도 고정(입력 해상도 224 고정)이므로
+**n_keep은 모든 입력에 대해 동일한 컴파일타임 상수**다 — 텐서 shape은 완전히
+정적이고, `topk`가 고르는 인덱스 "값"만 입력마다 다르다. DynamicViT류(threshold
+기반이라 샘플마다 남는 토큰 "개수" 자체가 다름)보다 ONNX/NPU 컴파일에 훨씬
+우호적인 이유가 이것이다 (§14.6).
+
+### 14.4 Progressive Keep Rate 스케줄
+
+Stage 1의 progressive sparsity(§2, Zhu & Gupta cubic ease-out)와 동일한 형태를
+keep_rate에 적용했다:
+
+```python
+# pruning/token_pruning.py: EvitTokenPruner._scheduled_keep_rate()
+if epoch < warmup_epochs:
+    keep_rate = 1.0                              # pruning 없음, 정상 학습
+elif epoch < warmup_epochs + ramp_epochs:
+    progress = (epoch - warmup_epochs) / ramp_epochs
+    drop = 1.0 - base_keep_rate
+    keep_rate = 1.0 - drop × (1 - (1-progress)³)  # cubic ease-out
+else:
+    keep_rate = base_keep_rate                    # 목표치 유지
+```
+
+`ViTPruner`(channel pruning)와의 핵심 차이: `EvitTokenPruner`는 **weight를
+마스킹하지 않는다.** 순수하게 forward 시점의 시퀀스 길이만 바꾸는 것이라
+`optimizer.step()` 이후에 호출할 `.apply()`가 없다 — 매 epoch 시작 시
+`set_epoch()`만 호출하면 된다 (`pruner.apply()` 같은 매 step 마스크 재적용이
+필요 없음).
+
+### 14.5 Knowledge Distillation — Teacher 선택
+
+Stage 2는 학습 가능한 파라미터를 추가하지 않는다(DynamicViT의 learned predictor와
+달리, EViT는 기존 attention을 그대로 재활용하는 training-free 선택 방식). 대신
+KD로 정확도 회복을 돕는다. `--kd-teacher-mode`로 두 가지를 지원:
+
+| 모드 | Teacher | 특징 |
+|------|---------|------|
+| `reduced` (기본값) | token pruning 적용 **전**의 동일 reduced 모델 (전체 토큰 사용) | Self-distillation. Stage 1 정확도를 기준점으로 삼아 token pruning으로 인한 손실만 회복하도록 유도 |
+| `original` | 원본 pretrained dense 모델 | 더 강한 teacher지만 이미 Stage 1에서 한 번 압축된 student와 capacity gap이 커서 신호가 덜 직접적 |
+
+기본값(`reduced`)을 권장한다 — "이 reduce된 모델이 토큰을 줄이기 전엔 냈던
+성능"을 직접 타깃으로 삼는 게 가장 직접적인 신호이기 때문이다.
+
+### 14.6 NPU 배포 관점 — TopK + Gather
+
+전체 파이프라인에서 가장 리스크가 큰 지점이다. Channel pruning 결과물(reduced
+모델)은 그냥 더 작은 표준 ViT라 ONNX/NPU 변환에 특별한 리스크가 없지만, token
+pruning은 그래프에 `TopK`와 **런타임에 계산된 인덱스로 하는 Gather**를 추가한다.
+이건 conv/matmul/elementwise 위주로 설계된 edge NPU 컴파일러 상당수가 지원하지
+않거나 CPU fallback으로 빠지는 연산 패턴이다.
+
+다만 §14.3에서 설명했듯 **텐서 shape 자체는 완전히 정적**이다(keep_rate가 고정
+비율이라 n_keep이 상수). 이 조건 덕분에 Mobilint NPU 컴파일러 통과 여부를 사전에
+확인했다 — TopK/Gather op 자체가 컴파일 가능함을 확인한 뒤에 이 Stage 2 구현에
+착수했다.
+
+**향후 다른 NPU 타겟으로 이식할 때는 반드시 이 순서를 지킬 것**: 전체
+fine-tuning을 다 돌리기 전에, TopK+Gather만 들어간 최소 toy ONNX 그래프를 먼저
+그 컴파일러에 넣어보고 통과 여부(및 실제 온칩 실행인지, CPU fallback인지)를
+확인한다. 통과하지 않으면:
+
+- **속도 이득 포기, 정확도만 취하는 대안**: 토큰을 gather로 제거하지 않고
+  0-마스킹만 적용. Shape이 안 바뀌므로 NPU엔 안전하지만 N 전체를 계속 연산하므로
+  속도 이득이 없다.
+- **입력 비의존적 static pruning 대안**: 매 입력마다 고정된 위치의 토큰을 제거.
+  TopK/동적 Gather가 없어져 NPU엔 안전하지만, EViT의 핵심 강점(이미지마다 다른
+  중요 패치를 적응적으로 고름)을 잃는다.
+
+### 14.7 실행 명령어
+
+```bash
+# Stage 1 (기존과 동일) → Reduce
+python reduce.py --model vit_tiny_patch16_224 \
+  --checkpoint ./output/vit_tiny_prune50_progressive_taylor/checkpoint_best.pt \
+  --output     ./output/vit_tiny_prune50_progressive_taylor/reduced.pt
+
+# Stage 2 — Token Pruning fine-tuning
+CUDA_VISIBLE_DEVICES=6,7 torchrun --nproc_per_node=2 train_token_pruning.py \
+  --config configs/vit_tiny_token_prune70.yaml
+
+# 평가
+python eval_token_pruned.py \
+  --token-pruned ./output/vit_tiny_prune50_token70/token_pruned_best.pt \
+  --data-path /workspace/etri_iitp/JS/Server_Compression/data/imagenet \
+  --wandb
+
+# ONNX 변환 (reduced.pt / token_pruned_best.pt 공용, "token_pruning" 키로 자동 판별)
+python export_onnx.py \
+  --input  ./output/vit_tiny_prune50_token70/token_pruned_best.pt \
+  --output ./output/vit_tiny_prune50_token70/token_pruned.onnx \
+  --verify
+```
+
+### 14.8 `token_pruned_best.pt` 로드 방법
+
+```python
+import torch, timm
+from pruning.vit_reducing import apply_reduced_config
+from pruning.token_pruning import apply_token_pruning
+
+ckpt   = torch.load("token_pruned_best.pt", map_location="cpu")
+model  = timm.create_model(ckpt["model_name"], pretrained=False)
+apply_reduced_config(model, ckpt["mlp_dims"])                 # Stage 1 구조 축소
+
+tp_cfg = ckpt["token_pruning"]
+apply_token_pruning(
+    model,
+    prune_layers=tp_cfg["prune_layers"],
+    base_keep_rate=tp_cfg["base_keep_rate"],
+    fuse_token=tp_cfg["fuse_token"],
+)                                                               # Stage 2 forward 패치
+model.load_state_dict(ckpt["state_dict"])
+model.eval()
+```
+
+### 14.9 주의사항
+
+- **표준 단일 CLS 토큰 ViT만 지원.** `dist_token`이 있는 distilled 모델이나
+  `no_embed_class` 변형은 `pruning/token_pruning.py`의 `_validate_model()`에서
+  즉시 예외를 던진다 (조용히 잘못된 결과를 내지 않도록).
+- **timm 버전이 바뀌면 `Attention` 내부 속성명(`qkv`, `num_heads`, `q_norm`,
+  `k_norm`)이 달라질 수 있다.** `_validate_model()`이 `hasattr` 체크로 조기
+  실패하지만, 정확한 CLS attention score 계산을 보장하려면 timm 업그레이드 시
+  `_cls_attention_scores()`를 다시 확인해야 한다.
+- **`export_onnx.py`의 CLI 인자가 `--reduced` → `--input`으로 바뀌었다** (Stage 1
+  전용이던 로더를 Stage 1/2 공용으로 바꾸면서 이름을 일반화함). 기존 스크립트/
+  문서에 `--reduced`로 남아있는 부분은 `--input`으로 교체해야 한다.
+- **Stage 2에는 channel pruning(`ViTPruner`)이 관여하지 않는다.** `mlp_dims`는
+  Stage 1에서 결정된 그대로 유지되고, Stage 2는 순수하게 시퀀스 길이만 바꾼다.
+
+---
+
 *작성: 2026-07 | 서버: `root@59bfae69b3a9` | GPU: Tiny→6,7 / Small→4,5*
+*업데이트: 2026-07 | Stage 2 EViT Token Pruning 추가 (§14)*

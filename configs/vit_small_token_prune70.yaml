@@ -1,0 +1,49 @@
+# ViT-Small  |  Stage 2 — EViT Token Pruning (keep_rate=0.7)
+#
+# 전제: Stage 1(soft channel pruning) → reduce.py 완료 후 reduced.pt 필요
+#   python reduce.py --model vit_small_patch16_224 \
+#     --checkpoint ./output/vit_small_prune50_progressive_taylor/checkpoint_best.pt \
+#     --output     ./output/vit_small_prune50_progressive_taylor/reduced.pt
+#
+# 실행 (GPU 4,5):
+#   CUDA_VISIBLE_DEVICES=4,5 torchrun --nproc_per_node=2 train_token_pruning.py \
+#     --config configs/vit_small_token_prune70.yaml
+
+reduced: ./output/vit_small_prune50_progressive_taylor/reduced.pt
+data_path: /workspace/etri_iitp/JS/Server_Compression/data/imagenet
+
+# ── 학습 ──────────────────────────────────────────────────────────
+epochs: 30
+batch_size: 128
+lr: 2.0e-5
+weight_decay: 0.05
+clip_grad: 1.0
+warmup_epochs: 3
+min_lr: 1.0e-6
+smoothing: 0.1
+amp: true
+num_workers: 8
+
+# ── EMA ───────────────────────────────────────────────────────────
+model_ema: true
+model_ema_decay: 0.9998
+
+# ── EViT Token Pruning (Progressive) ──────────────────────────────
+base_keep_rate: 0.7
+prune_layers: ""
+fuse_token: true
+keep_rate_warmup_epochs: 3
+keep_rate_ramp_epochs: 12
+
+# ── Knowledge Distillation ────────────────────────────────────────
+kd_alpha: 0.5
+kd_temperature: 4.0
+kd_teacher_mode: reduced
+
+# ── 출력 ──────────────────────────────────────────────────────────
+output_dir: ./output/vit_small_prune50_token70
+
+# ── WandB ─────────────────────────────────────────────────────────
+wandb: true
+wandb_project: vit-pruning
+wandb_run_name: "vit_small_prune50_token70"

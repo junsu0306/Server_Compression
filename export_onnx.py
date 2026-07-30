@@ -1,14 +1,31 @@
 """
-Reduced 모델 → ONNX 변환 CLI
+Reduced / Token Pruned 모델 → ONNX 변환 CLI
+
+reduce.py 출력(reduced.pt)과 train_token_pruning.py 출력(token_pruned_best.pt)을
+모두 --input 하나로 받는다. token_pruned_best.pt는 "token_pruning" 키의 존재로
+자동 판별해 EViT token pruning 그래프(TopK + Gather)까지 포함해서 export한다.
 
 사용법:
+    # Stage 1 산출물 (channel pruning만)
     python export_onnx.py \\
-        --reduced  ./output/vit_small_prune50/reduced.pt \\
-        --output   ./output/vit_small_prune50/reduced.onnx
+        --input  ./output/vit_small_prune50/reduced.pt \\
+        --output ./output/vit_small_prune50/reduced.onnx
+
+    # Stage 2 산출물 (channel pruning + token pruning)
+    python export_onnx.py \\
+        --input  ./output/vit_tiny_prune50_token70/token_pruned_best.pt \\
+        --output ./output/vit_tiny_prune50_token70/token_pruned.onnx
 
 변환 후 검증:
     pip install onnx onnxruntime
-    python export_onnx.py --reduced reduced.pt --output reduced.onnx --verify
+    python export_onnx.py --input token_pruned_best.pt --output out.onnx --verify
+
+주의 (token pruning 포함 시):
+    keep_rate가 고정 비율이라 남는 토큰 개수(k)는 입력에 관계없이 항상 동일한
+    정수 상수이므로 그래프의 텐서 shape은 완전히 정적이다. 다만 "어떤" 토큰이
+    선택되는지는 TopK+Gather로 런타임에 결정되므로, 이 두 op을 대상 NPU
+    컴파일러가 지원하는지 사전에 반드시 확인해야 한다 (IMPLEMENTATION.md
+    §14 참고).
 """
 
 from __future__ import annotations
@@ -17,15 +34,17 @@ import argparse
 import torch
 import timm
 from pruning.vit_reducing import apply_reduced_config
+from pruning.token_pruning import apply_token_pruning
 
 
 def get_args() -> argparse.Namespace:
-    p = argparse.ArgumentParser("Reduced ViT → ONNX")
-    p.add_argument("--reduced",    required=True, help="reduce.py 출력 파일 (reduced.pt)")
+    p = argparse.ArgumentParser("Reduced / Token Pruned ViT → ONNX")
+    p.add_argument("--input",      required=True,
+                   help="reduced.pt 또는 token_pruned_best.pt 경로 (자동 판별)")
     p.add_argument("--output",     required=True, help="저장할 .onnx 파일 경로")
     p.add_argument("--input-size", type=int, default=224)
     p.add_argument("--opset",      type=int, default=17,
-                   help="ONNX opset 버전 (기본 17)")
+                   help="ONNX opset 버전 (기본 17). TopK/Gather는 opset 17에서 지원됨")
     p.add_argument("--batch-size", type=int, default=1,
                    help="고정 배치 크기. --dynamic 사용 시 이 값은 검증용으로만 쓰임")
     p.add_argument("--dynamic",    action="store_true", default=True,
@@ -37,22 +56,43 @@ def get_args() -> argparse.Namespace:
     return p.parse_args()
 
 
-def load_reduced_model(reduced_path: str) -> tuple[torch.nn.Module, dict]:
-    ckpt  = torch.load(reduced_path, map_location="cpu", weights_only=False)
+def load_model(path: str) -> tuple[torch.nn.Module, dict, bool]:
+    """reduced.pt / token_pruned_best.pt 공용 로더.
+
+    반환: (model, ckpt, has_token_pruning)
+    """
+    ckpt  = torch.load(path, map_location="cpu", weights_only=False)
     model = timm.create_model(ckpt["model_name"], pretrained=False)
     apply_reduced_config(model, ckpt["mlp_dims"])
+
+    has_token_pruning = "token_pruning" in ckpt
+    if has_token_pruning:
+        tp_cfg = ckpt["token_pruning"]
+        apply_token_pruning(
+            model,
+            prune_layers=tp_cfg["prune_layers"],
+            base_keep_rate=tp_cfg["base_keep_rate"],
+            fuse_token=tp_cfg["fuse_token"],
+        )
+
     model.load_state_dict(ckpt["state_dict"])
     model.eval()
-    return model, ckpt
+    return model, ckpt, has_token_pruning
 
 
 def main():
     args  = get_args()
-    model, ckpt = load_reduced_model(args.reduced)
+    model, ckpt, has_token_pruning = load_model(args.input)
 
     n_params = sum(p.numel() for p in model.parameters())
     print(f"[Export] model={ckpt['model_name']}")
-    print(f"         params={n_params:,}  (compression={ckpt.get('compression_rate', '?'):.2f}%)")
+    if has_token_pruning:
+        tp_cfg = ckpt["token_pruning"]
+        print(f"         params={n_params:,}  (channel+token pruning 적용)")
+        print(f"         token_pruning: prune_layers={tp_cfg['prune_layers']}  "
+              f"base_keep_rate={tp_cfg['base_keep_rate']}  fuse_token={tp_cfg['fuse_token']}")
+    else:
+        print(f"         params={n_params:,}  (compression={ckpt.get('compression_rate', '?'):.2f}%)")
     print(f"         opset={args.opset}  dynamic={args.dynamic}")
 
     dummy = torch.zeros(args.batch_size, 3, args.input_size, args.input_size)
