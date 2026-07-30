@@ -124,12 +124,24 @@ def _evit_block_forward(
     표준 forward와 동일하게 attn → (선택적 token pruning) → mlp 순서로 진행한다.
     self.attn(...) 호출 자체는 원본 그대로이므로 attention 출력은 정확히 동일.
     keep_rate=1.0(또는 미설정)이면 원본 forward와 완전히 동일하게 동작한다.
+
+    attn_mask/is_causal은 여기서 self.attn에 그대로 전달하지 않는다 — timm
+    버전마다 Attention.forward가 이 kwarg들을 받는지 여부가 다르고(실제로
+    설치된 버전에서 is_causal 미지원으로 TypeError가 난 적 있음), 이 repo의
+    ViT 분류 파이프라인은 attn_mask/is_causal을 애초에 쓰지 않으므로(항상
+    None/False) 아예 안 넘기는 쪽이 timm 버전에 안전하다.
     """
+    if attn_mask is not None or is_causal:
+        raise NotImplementedError(
+            "EvitTokenPruner는 attn_mask/is_causal을 지원하지 않는다 — "
+            "이 repo의 ViT 분류 학습에서는 사용되지 않는 경로다."
+        )
+
     keep_rate = getattr(self, "_evit_keep_rate", 1.0)
     fuse_token = getattr(self, "_evit_fuse_token", True)
 
     x_norm = self.norm1(x)
-    attn_out = self.attn(x_norm, attn_mask=attn_mask, is_causal=is_causal)
+    attn_out = self.attn(x_norm)
     x = x + self.drop_path1(self.ls1(attn_out))
 
     if keep_rate < 1.0:
