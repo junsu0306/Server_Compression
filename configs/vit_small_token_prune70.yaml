@@ -9,7 +9,7 @@
 #   CUDA_VISIBLE_DEVICES=4,5 torchrun --nproc_per_node=2 train_token_pruning.py \
 #     --config configs/vit_small_token_prune70.yaml
 
-reduced: ./output/vit_small_prune50_progressive_taylor/reduced.pt
+reduced: ./output/vit_small_50_final/reduced.pt
 data_path: /workspace/etri_iitp/JS/Server_Compression/data/imagenet
 
 # ── 학습 ──────────────────────────────────────────────────────────
@@ -41,9 +41,9 @@ kd_temperature: 4.0
 kd_teacher_mode: reduced
 
 # ── 출력 ──────────────────────────────────────────────────────────
-output_dir: ./output/vit_small_prune50_token70
+output_dir: ./output/vit_small_50_final/token_prune70
 
 # ── WandB ─────────────────────────────────────────────────────────
 wandb: true
-wandb_project: vit-pruning
-wandb_run_name: "vit_small_prune50_token70"
+wandb_project: vit-token-pruning   # Stage 1과 분리된 새 프로젝트
+wandb_run_name: "vit_small_50_final_token70"

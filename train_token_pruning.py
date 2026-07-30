@@ -116,7 +116,8 @@ def get_args() -> argparse.Namespace:
 
     # WandB
     p.add_argument("--wandb",          action="store_true")
-    p.add_argument("--wandb-project",  default="vit-pruning")
+    p.add_argument("--wandb-project",  default="vit-token-pruning",
+                   help="Stage 1(channel pruning, 'vit-pruning')과 분리된 새 프로젝트")
     p.add_argument("--wandb-run-name", default="")
     p.add_argument("--wandb-run-id",   default="")
 

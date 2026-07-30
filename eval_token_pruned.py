@@ -33,7 +33,8 @@ def get_args() -> argparse.Namespace:
     p.add_argument("--amp",            action="store_true", default=True)
     p.add_argument("--gpu",            type=int, default=0)
     p.add_argument("--wandb",          action="store_true")
-    p.add_argument("--wandb-project",  default="vit-pruning")
+    p.add_argument("--wandb-project",  default="vit-token-pruning",
+                   help="Stage 1(channel pruning, 'vit-pruning')과 분리된 새 프로젝트")
     p.add_argument("--wandb-run-name", default="")
     return p.parse_args()
 
