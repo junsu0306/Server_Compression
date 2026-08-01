@@ -427,8 +427,15 @@ def main():
         )
         val_stats = evaluate(val_loader, eval_model, device, amp=args.amp)
 
-        acc1    = val_stats["acc1"]
-        is_best = acc1 > best_acc1
+        acc1 = val_stats["acc1"]
+        # keep_rate가 target까지 다 내려간 이후(post-ramp) epoch들 중에서만 best를 갱신한다.
+        # warmup/ramp 구간(keep_rate가 아직 1.0에 가까운)의 val_top1은 pruning이 거의
+        # 안 걸린 상태의 점수라, 여길 기준으로 "best"를 잡으면 checkpoint_best.pt /
+        # token_pruned_best.pt가 실질적으로 token pruning이 반영 안 된 모델이 되어버린다
+        # (channel pruning의 checkpoint_best.pt에서 겪었던 것과 동일한 함정).
+        ramp_end = token_pruner.warmup_epochs + token_pruner.ramp_epochs
+        fully_pruned = epoch >= ramp_end
+        is_best = fully_pruned and acc1 > best_acc1
         if is_best:
             best_acc1 = acc1
 
