@@ -44,12 +44,14 @@ Server_Compression/
 │   ├── vit_tiny_token_prune70.yaml              ← Stage 2: EViT Token Pruning, tiny 50% 기반 (§14)
 │   ├── vit_small_token_prune70.yaml             ← Stage 2: EViT Token Pruning, small 50% 기반 (§14)
 │   ├── vit_tiny_30_token_prune70.yaml           ← Stage 2: EViT Token Pruning, tiny 30% 기반 (§14)
-│   └── vit_small_30_token_prune70.yaml          ← Stage 2: EViT Token Pruning, small 30% 기반 (§14)
+│   ├── vit_small_30_token_prune70.yaml          ← Stage 2: EViT Token Pruning, small 30% 기반 (§14)
+│   └── vit_tiny_30_token_prune70_npu_test.yaml  ← NPU 컴파일 테스트용, 10 epoch만 (§14.6-1)
 ├── pruning/
 │   ├── __init__.py
 │   ├── vit_pruning.py           ← ViTPruner: Soft Pruning 컨트롤러 (channel, Stage 1)
 │   ├── vit_reducing.py          ← reduce_vit_model: Dense 변환 (Stage 1 → 완료 후)
 │   ├── token_pruning.py         ← EvitTokenPruner: EViT Token Pruning (sequence, Stage 2)
+│   ├── token_pruning_npu.py     ← NPU 호환 forward 변형 (ScatterElements/GatherElements 회피, §14.6-1)
 │   └── vit_flops.py             ← FLOPs / Activation Footprint 분석적 추정 (§5, §11)
 ├── engine.py                    ← train_one_epoch / evaluate (Stage 1/2 공용)
 ├── train.py                     ← Stage 1 학습 진입점 (단일GPU / DDP, --config 지원)
@@ -1156,7 +1158,78 @@ fine-tuning을 다 돌리기 전에, TopK+Gather만 들어간 최소 toy ONNX �
   TopK/동적 Gather가 없어져 NPU엔 안전하지만, EViT의 핵심 강점(이미지마다 다른
   중요 패치를 적응적으로 고름)을 잃는다.
 
-### 14.6-1 WandB 프로젝트 분리
+> **후속**: 위에서 "TopK/Gather 컴파일 가능 확인"이라고 한 건 최소 toy 그래프
+> 테스트였다 — 실제 구현이 쓰는 정확한 연산(`GatherElements`, `ScatterElements`)
+> 까지는 검증하지 못했고, 실제로 이 둘이 문제가 됐다. §14.6-1 참고.
+
+### 14.6-1 실제 NPU(Aries2 / qbcompiler) 컴파일 실패 사례와 해결 시도
+
+`vit_tiny_c30_token70.onnx`(Stage 2 산출물)를 Mobilint qbcompiler에 넣었더니
+컴파일이 실패했다. 원인 3가지:
+
+| 문제 | 원인 |
+|------|------|
+| `ScatterElements` 미지원 (blocks 3, 6, 9) | `_complement_idx()`가 `torch.scatter`로 "top-k에 안 뽑힌 나머지 인덱스"를 구하는 트릭을 씀 |
+| `GatherElements` 미지원 (9개 노드, 전부 Unsupported) | `torch.gather(dim=1, index=(B,k,C))`가 배치마다 다른 인덱스를 한 번에 처리하려고 element-wise gather로 export됨 — §14.6에서 확인한 단순 `Gather`(index_select류)와는 다른 op |
+| ONNX 그래프 output이 1개가 아니라 7개 | blocks 3/6/9의 `TopK` 중간 결과(값+인덱스)가 그래프 output으로 노출됨 → quantizer가 output 1개를 가정하는데 7개가 나와서 calibration 대상을 못 정함 → `modelInputNames` 개수 불일치로 quantize 자체가 실패 |
+
+핵심 교훈: **"TopK/Gather가 컴파일된다"와 "이 구현이 실제로 쓰는 TopK/Gather 변형이
+컴파일된다"는 다른 이야기다.** `torch.gather`/`torch.scatter`는 배치별·요소별
+동적 인덱스를 다루는 `GatherElements`/`ScatterElements`로 export되는데, 이건
+단순 "N개 중 K개를 인덱스 리스트로 뽑는" `Gather`보다 훨씬 지원이 안 되는
+연산이다. 다음에 다른 NPU 타겟으로 이식할 때는 최소 toy 그래프도 실제 코드가
+쓰는 정확한 op(이 경우 `GatherElements`/`ScatterElements`)로 맞춰서 테스트해야
+한다.
+
+**해결 시도 — 알고리즘은 그대로 두고 구현만 재작성** ([pruning/token_pruning_npu.py](../pruning/token_pruning_npu.py)):
+
+1. **ScatterElements 제거**: `cls_attn`이 이미 정렬 가능한 점수 배열이므로,
+   "top-k에 안 뽑힌 나머지"는 `_complement_idx()`(scatter+sort 트릭) 없이
+   그냥 `largest=False`인 두 번째 `TopK`로 바로 구할 수 있다.
+   ```python
+   _, idx   = torch.topk(cls_attn, n_keep, largest=True)
+   _, compl = torch.topk(cls_attn, n_patch - n_keep, largest=False)  # scatter 불필요
+   ```
+   결과는 수학적으로 완전히 동일하다 — 학습 중에도 항상 이 버전을 쓴다(정확도에
+   영향 없음, 그래프만 단순해짐).
+
+2. **GatherElements → 배치=1이면 plain Gather**: NPU 추론은 거의 항상 batch=1
+   (streaming)이므로, export 시점에만 배치 축을 떼어내고
+   `torch.index_select(dim=0, index=1D)`로 바꾼다. 이건 "N개 중 K개 행을
+   1차원 인덱스로 뽑기"라는 단순 연산이라 `Gather`로 export된다. 학습(batch>1)
+   중에는 여전히 기존 `torch.gather`를 쓴다 — `block._evit_npu_export` 플래그로
+   전환한다.
+
+3. **output 7개 → dynamo=False**: `/blocks/blocks.3/TopK_output_0` 같은
+   네이밍은 torch 2.x의 dynamo 기반 ONNX exporter 흔적으로 보인다. 데이터
+   의존적 shape을 가진 TopK 같은 연산을 안전하게 추적하려고 중간값을 그래프
+   output으로 부수적으로 노출시키는 것으로 추정된다. `export_onnx.py`에서
+   `torch.onnx.export(..., dynamo=False)`로 레거시(TorchScript 기반) exporter를
+   강제해 우회를 시도한다. **이건 셋 중 확실성이 제일 낮다** — 실제로
+   해결되는지는 export 직후 그래프 output 개수를 확인해야 안다.
+
+**기존 파이프라인은 전혀 안 건드림 — 격리된 실험 경로로 추가:**
+
+- `pruning/token_pruning_npu.py` (신규 파일) — 위 1, 2를 구현한 `_evit_block_forward_npu`
+- `pruning/token_pruning.py`의 `apply_token_pruning()`/`EvitTokenPruner`에
+  `forward_fn` 파라미터 추가 (기본값 = 기존 함수라 다른 3개 run에 영향 없음)
+- `train_token_pruning.py --npu-safe` 플래그 (기본 False) — 켜면 위 forward를
+  쓰고, 저장되는 `token_pruned_best.pt`에 `"npu_safe": true`를 기록해둠
+- `export_onnx.py`가 그 `npu_safe` 값을 자동 감지해서 NPU forward + batch=1
+  강제 + `dynamo=False`(고침 3)를 자동 적용 — 사람이 export할 때 플래그를
+  깜빡할 여지를 없앰. export 직후 그래프 output 개수와 `ScatterElements`/
+  `GatherElements` 잔존 여부를 바로 출력해서, qbcompiler를 다시 돌리기 전에
+  1차로 확인 가능하다.
+- `configs/vit_tiny_30_token_prune70_npu_test.yaml` — tiny 30% 기반, **10 epoch만**
+  (컴파일 가능 여부 확인이 목적이지 정확도 검증이 아님), `output_dir`을
+  `token_prune70_npu_test/`로 분리해 정식 30-epoch run을 안 건드림
+
+**상태: 미검증.** 이 문서를 쓰는 시점엔 아직 서버에서 학습→export→qbcompiler까지
+다시 돌려보지 않았다. 1, 2번은 correctness 리스크가 거의 없는 순수 재작성이라
+동작할 가능성이 높지만, 3번(dynamo=False)은 추정에 근거한 시도라 실패할 수도
+있다. 실제 결과가 나오면 이 섹션을 업데이트해야 한다.
+
+### 14.6-2 WandB 프로젝트 분리
 
 Stage 1(channel pruning, `train.py`/`eval_reduced.py`)과 Stage 2(token pruning)는
 서로 다른 WandB 프로젝트를 쓴다 — 압축 축이 달라서 같은 프로젝트에 섞으면 비교가
@@ -1275,4 +1348,7 @@ model.eval()
 *업데이트: 2026-07 | Stage 2 EViT Token Pruning 추가 (§14)*
 *업데이트: 2026-08 | FLOPs/Activation footprint 분석(§5, §11), `checkpoint_best.pt`/*
 *`token_pruned_best.pt`가 pruning 적용 전 epoch에서 저장되는 문제 발견 및 수정(§13-❽, §14.4-1),*
-*timm `is_causal` 호환성 이슈 수정(§14.9), WandB 프로젝트 분리(§14.6-1), tiny/small 30% config 추가*
+*timm `is_causal` 호환성 이슈 수정(§14.9), WandB 프로젝트 분리(§14.6-2), tiny/small 30% config 추가*
+*업데이트: 2026-08 | Aries2/qbcompiler 컴파일 실패(ScatterElements/GatherElements 미지원,*
+*output 7개 노출) 발견 및 격리된 해결 시도 — `pruning/token_pruning_npu.py`,*
+*`train_token_pruning.py --npu-safe`, `export_onnx.py` 자동 감지 추가 (§14.6-1, 미검증)*
