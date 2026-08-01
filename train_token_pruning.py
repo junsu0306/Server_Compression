@@ -96,6 +96,10 @@ def get_args() -> argparse.Namespace:
                    help="token pruning 시작 전 유예 epoch 수 (0=즉시 적용)")
     p.add_argument("--keep-rate-ramp-epochs",   type=int, default=0,
                    help="keep_rate 1.0→target 점진 감소 epoch 수 (0=즉시 target)")
+    p.add_argument("--npu-safe",             action="store_true", default=False,
+                   help="pruning/token_pruning_npu.py의 NPU 호환 forward(ScatterElements 제거, "
+                        "export 시 batch=1 index_select) 사용. 기본 False=기존과 동일한 구현. "
+                        "학습 결과는 수학적으로 동일해야 하지만 검증되지 않은 실험 경로다.")
 
     # Knowledge Distillation — teacher 선택
     p.add_argument("--kd-alpha",       type=float, default=0.5,
@@ -264,11 +268,15 @@ def load_checkpoint(path, model, model_ema, optimizer, lr_scheduler, scaler, tok
 
 
 def save_token_pruned_artifact(path, model, model_name, mlp_dims, token_pruner,
-                                n_params_before, n_params_after) -> None:
+                                n_params_before, n_params_after, npu_safe: bool = False) -> None:
     """eval_token_pruned.py / export_onnx.py가 바로 로드할 수 있는 배포용 아티팩트.
 
     reduce.py의 reduced.pt와 같은 성격 — 여기서는 물리적 구조 변화가 없으므로
     (mlp_dims 그대로) state_dict + token pruning 설정만 추가로 저장한다.
+
+    npu_safe: --npu-safe로 학습했는지 여부. export_onnx.py가 이 값을 보고
+        pruning/token_pruning_npu.py의 forward를 자동으로 다시 붙인다
+        (사람이 export할 때 플래그를 깜빡할 위험을 없애기 위함).
     """
     torch.save(
         {
@@ -278,6 +286,7 @@ def save_token_pruned_artifact(path, model, model_name, mlp_dims, token_pruner,
             "token_pruning":     token_pruner.config(),
             "n_params_before":   n_params_before,
             "n_params_after":    n_params_after,
+            "npu_safe":          npu_safe,
         },
         path,
     )
@@ -357,6 +366,14 @@ def main():
     if args.prune_layers:
         prune_layers = [int(x) for x in args.prune_layers.split(",") if x.strip() != ""]
 
+    tp_kwargs = {}
+    if args.npu_safe:
+        from pruning.token_pruning_npu import _evit_block_forward_npu
+        tp_kwargs["forward_fn"] = _evit_block_forward_npu
+        if is_main:
+            print("[NPU-SAFE] pruning/token_pruning_npu.py의 forward 사용 "
+                  "(ScatterElements 제거, export 시 batch=1 index_select 전환)")
+
     token_pruner = EvitTokenPruner(
         model,
         base_keep_rate=args.base_keep_rate,
@@ -364,6 +381,7 @@ def main():
         prune_layers=prune_layers,
         warmup_epochs=args.keep_rate_warmup_epochs,
         ramp_epochs=args.keep_rate_ramp_epochs,
+        **tp_kwargs,
     )
     if model_ema is not None:
         token_pruner.attach_mirror(model_ema.module)
@@ -478,7 +496,7 @@ def main():
                 save_token_pruned_artifact(
                     os.path.join(args.output_dir, "token_pruned_best.pt"),
                     eval_model, model_name, mlp_dims, token_pruner,
-                    n_params_before_total, n_after,
+                    n_params_before_total, n_after, npu_safe=args.npu_safe,
                 )
 
     if is_main:

@@ -59,7 +59,7 @@ from __future__ import annotations
 import math
 import types
 from dataclasses import dataclass, field
-from typing import List, Optional
+from typing import Callable, List, Optional
 
 import torch
 import torch.nn as nn
@@ -207,11 +207,17 @@ def apply_token_pruning(
     prune_layers: List[int],
     base_keep_rate: float = 0.7,
     fuse_token: bool = True,
+    forward_fn=_evit_block_forward,
 ) -> nn.Module:
     """model.blocks[i]의 forward를 EViT token pruning 버전으로 교체 (in-place, stateless).
 
     학습 중 progressive 스케줄이 필요하면 EvitTokenPruner를 쓰고,
     eval/export 시 고정된 keep_rate로 그래프를 재현할 때는 이 함수를 직접 호출한다.
+
+    forward_fn: 기본값은 이 모듈의 _evit_block_forward. NPU 호환 변형(scatter 제거,
+        batch=1 index_select) 등 다른 구현을 쓰려면 pruning/token_pruning_npu.py의
+        apply_token_pruning_npu()처럼 여기에 다른 함수를 넘긴다 — 기본 인자라
+        기존 호출부(train_token_pruning.py 등)는 전혀 영향받지 않는다.
 
     checkpoint에서 재현할 때:
         model = timm.create_model(model_name, pretrained=False)
@@ -227,7 +233,7 @@ def apply_token_pruning(
 
     for i, block in enumerate(model.blocks):
         if i in prune_layers:
-            block.forward = types.MethodType(_evit_block_forward, block)
+            block.forward = types.MethodType(forward_fn, block)
             block._evit_keep_rate = base_keep_rate
             block._evit_fuse_token = fuse_token
             block._evit_pruned = True
@@ -255,6 +261,10 @@ class EvitTokenPruner:
         fuse_token:      버려지는 토큰을 attention 가중합으로 fused token에 합칠지 여부
         warmup_epochs:   pruning 없이 정상 학습할 epoch 수 (keep_rate=1.0 유지)
         ramp_epochs:     keep_rate가 1.0 → base_keep_rate로 점진 감소하는 epoch 수
+        forward_fn:      block.forward로 바인딩할 함수. 기본값은 이 모듈의
+                         _evit_block_forward. NPU 호환 변형을 쓰려면
+                         pruning/token_pruning_npu.py의 _evit_block_forward_npu를
+                         넘긴다 (기본 인자라 기존 사용처는 영향 없음).
     """
 
     model: nn.Module
@@ -263,6 +273,7 @@ class EvitTokenPruner:
     prune_layers: Optional[List[int]] = None
     warmup_epochs: int = 0
     ramp_epochs: int = 0
+    forward_fn: Callable = _evit_block_forward
     _current_epoch: int = field(default=0, init=False)
     _keep_rate: float = field(default=1.0, init=False)
     _mirrors: List[nn.Module] = field(default_factory=list, init=False)
@@ -273,7 +284,8 @@ class EvitTokenPruner:
             self.prune_layers = default_prune_layers(depth)
 
         apply_token_pruning(
-            self.model, self.prune_layers, base_keep_rate=1.0, fuse_token=self.fuse_token
+            self.model, self.prune_layers, base_keep_rate=1.0, fuse_token=self.fuse_token,
+            forward_fn=self.forward_fn,
         )
         progressive = self.warmup_epochs > 0 or self.ramp_epochs > 0
         self._keep_rate = 1.0 if progressive else self.base_keep_rate
@@ -330,6 +342,7 @@ class EvitTokenPruner:
         apply_token_pruning(
             mirror_model, self.prune_layers,
             base_keep_rate=self._keep_rate, fuse_token=self.fuse_token,
+            forward_fn=self.forward_fn,
         )
         self._mirrors.append(mirror_model)
 

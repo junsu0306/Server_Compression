@@ -41,13 +41,16 @@ Server_Compression/
 │   ├── vit_small_prune30.yaml
 │   ├── vit_tiny_prune50_progressive.yaml        ← Global + KD + Progressive + Taylor EMA
 │   ├── vit_small_prune50_progressive.yaml       ← Global + KD + Progressive + Taylor EMA
-│   ├── vit_tiny_token_prune70.yaml              ← Stage 2: EViT Token Pruning (§14)
-│   └── vit_small_token_prune70.yaml             ← Stage 2: EViT Token Pruning (§14)
+│   ├── vit_tiny_token_prune70.yaml              ← Stage 2: EViT Token Pruning, tiny 50% 기반 (§14)
+│   ├── vit_small_token_prune70.yaml             ← Stage 2: EViT Token Pruning, small 50% 기반 (§14)
+│   ├── vit_tiny_30_token_prune70.yaml           ← Stage 2: EViT Token Pruning, tiny 30% 기반 (§14)
+│   └── vit_small_30_token_prune70.yaml          ← Stage 2: EViT Token Pruning, small 30% 기반 (§14)
 ├── pruning/
 │   ├── __init__.py
 │   ├── vit_pruning.py           ← ViTPruner: Soft Pruning 컨트롤러 (channel, Stage 1)
 │   ├── vit_reducing.py          ← reduce_vit_model: Dense 변환 (Stage 1 → 완료 후)
-│   └── token_pruning.py         ← EvitTokenPruner: EViT Token Pruning (sequence, Stage 2)
+│   ├── token_pruning.py         ← EvitTokenPruner: EViT Token Pruning (sequence, Stage 2)
+│   └── vit_flops.py             ← FLOPs / Activation Footprint 분석적 추정 (§5, §11)
 ├── engine.py                    ← train_one_epoch / evaluate (Stage 1/2 공용)
 ├── train.py                     ← Stage 1 학습 진입점 (단일GPU / DDP, --config 지원)
 ├── reduce.py                    ← Reducing CLI (Stage 1 완료 후)
@@ -64,6 +67,13 @@ Server_Compression/
 ├── output/                      ← 체크포인트 저장 (gitignore)
 └── IMPLEMENTATION.md
 ```
+
+> **네이밍 컨벤션**: 각 모델×압축률 조합 중 `progressive_taylor`(Stage 1 권장 설정)로
+> 학습한 것이 최종 채택 버전이다. 서버에서는 이 4개(tiny 30/50%, small 30/50%)를
+> `vit_{tiny,small}_{30,50}_final`로 rename해서 관리한다
+> (예: `output/vit_tiny_30_final/`). 이 문서의 실행 명령어 예시 중 일부는 구버전
+> 이름(`vit_tiny_prune50_progressive_taylor` 등)을 쓰지만, 실제 서버 경로는
+> `_final` 컨벤션을 따른다 — §14.7 참고.
 
 ---
 
@@ -502,16 +512,53 @@ mlp_dims = get_reduced_config(ema_model)
 ### `eval_reduced.py` — Reduced 모델 평가
 
 `reduce.py`로 생성한 `reduced.pt`를 ImageNet val로 평가하고 WandB에 `test/*` 지표 기록.
+`--gpu`는 상대 인덱스라 특정 GPU 하나만 쓰고 싶으면 `CUDA_VISIBLE_DEVICES` 없이
+`--gpu <N>`만 지정하면 된다 (DDP 아님, 단일 프로세스 평가).
 
 ```bash
-CUDA_VISIBLE_DEVICES=4 python eval_reduced.py \
-  --reduced   ./output/vit_tiny_prune50_progressive_taylor/reduced.pt \
+python eval_reduced.py \
+  --reduced   ./output/vit_tiny_30_final/reduced.pt \
   --data-path /workspace/etri_iitp/JS/Server_Compression/data/imagenet \
+  --gpu 4 \
   --wandb \
-  --wandb-run-name vit_tiny_prune50_progressive_taylor_test
+  --wandb-run-name vit_tiny_30_final_reduced_eval
 ```
 
-기록 지표: `test/top1`, `test/top5`, `test/loss`, `test/n_params`, `test/compression_pct`
+기록 지표: `test/top1`, `test/top5`, `test/loss`, `test/n_params`, `test/compression_pct`,
+그리고 `pruning/vit_flops.py` 기반 FLOPs/activation footprint 지표(§11) —
+params뿐 아니라 실제 연산량/메모리 절감이 얼마나 되는지 baseline과 비교해서 같이 기록한다.
+
+---
+
+### `pruning/vit_flops.py` — FLOPs / Activation Footprint 분석적 추정
+
+Params 압축률만으로는 실제 연산량(FLOPs)이나 추론 시 메모리(activation footprint)가
+얼마나 줄었는지 알 수 없다 — channel pruning이 FFN만 건드리고 attention(QKV/proj,
+§4의 G_QKV+G_PROJ ≈ 31%)은 그대로 두기 때문에, params 절감률과 FLOPs/activation
+절감률이 서로 다르게 나온다. 이걸 `eval_reduced.py`에서 baseline(원본 구조) vs
+reduced(block별 non-uniform mlp_dim)로 비교해서 WandB에 시각화한다.
+
+```python
+from pruning.vit_flops import analyze_vit_compute, compute_reduction
+
+baseline_compute = analyze_vit_compute(embed_dim, num_heads, baseline_mlp_dims, n_patches)
+reduced_compute  = analyze_vit_compute(embed_dim, num_heads, ckpt["mlp_dims"], n_patches)
+reduction = compute_reduction(baseline_compute, reduced_compute)
+```
+
+**측정이 아니라 구조로부터 계산(analytical)이다** — hook 기반 프로파일러가 아닌 이유:
+timm 1.0.x의 `Attention`이 `fused_attn=True`일 때 `F.scaled_dot_product_attention`
+하나로 attention 전체를 처리해서, nn.Module 단위 forward hook으로는 Q@K^T /
+softmax / attn@V FLOPs를 분해해서 잡을 수 없다. 이미 알고 있는 구조 정보
+(embed_dim, num_heads, block별 mlp_dim, 토큰 개수)로 표준 공식을 이용해 직접
+계산하는 쪽이 오히려 간단하고 정확하다.
+
+- **FLOPs**: block별 `qkv + proj + attn(QK^T, attn@V) + mlp(fc1, fc2)` MACs 합 × 2
+- **Activation footprint**: block 하나의 forward 동안 존재하는 주요 중간 텐서
+  (qkv, attention matrix, mlp hidden 등) 크기 합의 **block별 최댓값(peak)** — 실제
+  peak memory profiler가 아니라 상대 비교용 추정치임을 명시 (docstring 참고).
+  attention 관련 항(`H*N*N`)은 channel pruning으로 안 줄어들므로, activation
+  절감률이 params 절감률보다 작게 나오는 게 정상이다.
 
 ---
 
@@ -627,15 +674,26 @@ AFTER:  2,862,256 params  (49.94% removed)
 ## 9. ONNX 변환
 
 > **주의**: `export_onnx.py`의 `--reduced` 인자는 Stage 2(§14) 추가 시
-> `--input`으로 이름이 바뀌었다 (reduced.pt / token_pruned_best.pt 공용 로더).
+> `--input`으로 이름이 바뀌었다 (reduced.pt / token_pruned_*.pt 공용 로더).
+
+`--output`을 생략하면 체크포인트 메타데이터(모델명·압축률·keep_rate)로
+**자동 네이밍**한다 — `reduced.onnx`/`token_pruned.onnx`처럼 모델마다 똑같은
+이름이 나오면 폴더 밖으로 꺼냈을 때 구분이 안 되는 문제를 피하기 위함이다.
+폴더 이름을 파싱하는 게 아니라 체크포인트 안의 값(`compression_rate`,
+`n_params_before/after`, `token_pruning.base_keep_rate`)만 쓰므로 어디로
+옮겨도 파일명만으로 구분된다.
 
 ```bash
+# --output 생략 → 자동 네이밍
+python export_onnx.py --input ./output/vit_tiny_30_final/reduced.pt --verify
+#   → ./output/vit_tiny_30_final/vit_tiny_c30_reduced.onnx
+
 python export_onnx.py \
-  --input  ./output/vit_tiny_prune50_progressive_taylor/reduced.pt \
-  --output ./output/vit_tiny_prune50_progressive_taylor/reduced.onnx \
-  --verify
+  --input ./output/vit_tiny_30_final/token_prune70/token_pruned_last.pt --verify
+#   → ./output/vit_tiny_30_final/token_prune70/vit_tiny_c30_token70.onnx
 ```
 
+- `--output`: 직접 지정하면 자동 네이밍 대신 그 경로를 그대로 씀
 - `--dynamic`: 배치 차원 가변 (기본 활성)
 - `--verify`: onnxruntime vs PyTorch 출력값 비교
 - `--num-threads N`: 추론 스레드 수 (0=auto, 기본값)
@@ -681,6 +739,17 @@ model.eval()
 - `pruning/current_sparsity` 가 epoch마다 증가하는지 확인 (epoch 5~24)
 - epoch 25부터 `current_sparsity ≈ target_sparsity` 로 고정되는지 확인
 - val/top1이 epoch 0~4 구간에서 상대적으로 안정적인지 확인 (warmup 효과)
+
+### `eval_reduced.py` 전용 (test/* + FLOPs/Activation, §5)
+
+| 키 | 내용 |
+|----|------|
+| `test/n_params`, `test/compression_pct` | 압축 후 파라미터 수 / 절감률 |
+| `test/flops_baseline`, `test/flops_reduced`, `test/flops_reduction_pct` | FLOPs 원본 대비 절감률 |
+| `test/activation_baseline_bytes`, `test/activation_reduced_bytes`, `test/activation_reduction_pct` | activation footprint(peak, 추정치) 절감률 |
+| `compression_summary` | params/FLOPs/activation 절감률 한눈 비교 bar chart |
+| `flops_per_block` | block별 FLOPs 절감률 bar chart — attention은 안 줄어서 block마다 편차가 큼 |
+| `activation_per_block` | block별 activation footprint 절감률 bar chart |
 
 ---
 
@@ -847,6 +916,36 @@ print(ckpt.keys())
 python measure_memory.py
 ```
 
+### ❽ `checkpoint_best.pt`가 pruning 적용 전(warmup 구간) epoch에서 저장되는 문제 ★중요★
+
+**증상**: `reduce.py`를 `checkpoint_best.pt`로 돌렸는데 `removed 0 params (0.00% removed)`가
+나오거나, 압축률이 목표치보다 훨씬 낮게 나옴.
+
+**원인**: `train.py`의 `is_best` 판정이 pruning 진행 상태와 무관하게 순수 `val_top1`
+최고값만 본다. Progressive pruning은 `prune_warmup_epochs` 구간(예: epoch 0~4)에는
+sparsity=0(=pruning 전, 원본 정확도)이라 이 구간의 val_top1이 이후 pruning이 걸린
+epoch들보다 높게 나오기 쉽다. 그 경우 `checkpoint_best.pt`는 **pruning이 거의 안
+걸린 상태의 체크포인트**가 되어버린다.
+
+**진단**:
+```python
+import torch
+ckpt = torch.load("checkpoint_best.pt", map_location="cpu", weights_only=False)
+args = ckpt["args"]
+warmup, ramp = args.get("prune_warmup_epochs", 0), args.get("prune_ramp_epochs", 0)
+print(f"best epoch={ckpt['epoch']}  ramp_end={warmup+ramp}  "
+      f"→ {'⚠ pruning 적용 전' if ckpt['epoch'] < warmup+ramp else 'OK'}")
+```
+
+**즉시 대안**: 이미 완료된 run이면 `checkpoint_last.pt`(마지막 epoch, sparsity=target
+유지 구간)로 `reduce.py`를 돌린다. 최고 정확도 지점은 아니지만 최소한 목표
+압축률은 반영된 결과를 얻는다.
+
+**근본 수정 (권장, 아직 `train.py`에는 미반영)**: `is_best` 판정을 `epoch >=
+prune_warmup_epochs + prune_ramp_epochs`(=target sparsity 도달 이후) 조건으로
+gate해야 한다. `train_token_pruning.py`(Stage 2)에는 이미 이 수정이 적용돼 있다
+(§14.4-1) — 동일한 패턴을 `train.py`에도 적용할 수 있다.
+
 ---
 
 ## 14. Stage 2 — EViT Token Pruning
@@ -970,6 +1069,54 @@ else:
 `set_epoch()`만 호출하면 된다 (`pruner.apply()` 같은 매 step 마스크 재적용이
 필요 없음).
 
+#### 14.4-1 `is_best` 판정 — §13-❽와 동일한 함정을 Stage 2에서도 발견
+
+`vit_tiny_30_final`로 첫 Stage 2 run을 돌려보니, `val/top1_best`가 epoch 3
+(=`keep_rate_warmup_epochs` 직후, keep_rate가 아직 1.0에 가까운 시점)에서
+73.6%로 찍힌 뒤 나머지 26 epoch 내내 한 번도 안 움직였다 — §13-❽에서 발견한
+channel pruning의 `checkpoint_best.pt` 함정이 token pruning에도 그대로
+재현된 것이다. `train_token_pruning.py`도 원래는 `train.py`와 동일하게
+"keep_rate 상태 무관하게 그냥 val_top1 최고값"만 봤기 때문이다.
+
+**수정** ([train_token_pruning.py](../train_token_pruning.py) 학습 루프):
+```python
+ramp_end = token_pruner.warmup_epochs + token_pruner.ramp_epochs
+fully_pruned = epoch >= ramp_end
+is_best = fully_pruned and acc1 > best_acc1   # ramp 끝난 이후 epoch만 후보
+```
+`keep_rate_warmup_epochs`/`keep_rate_ramp_epochs`가 모두 0(non-progressive)이면
+`ramp_end=0`이라 모든 epoch이 후보가 되어 기존과 동일하게 동작한다.
+
+**엣지 케이스**: `epochs <= warmup_epochs + ramp_epochs`로 설정하면 `fully_pruned`인
+epoch이 학습 루프 안에 하나도 안 생겨서 `is_best`가 끝까지 한 번도 안 켜지고,
+`checkpoint_best.pt`/`token_pruned_best.pt` 자체가 생성되지 않는다
+(`checkpoint_last.pt`는 항상 저장됨). 지금 쓰는 4개 config는 `epochs=30`,
+`ramp_end=15`라 15 epoch 여유가 있어 안전하다.
+
+**이미 이 문제로 오염된 run 복구**: `token_pruned_best.pt`가 이미 (수정 전 코드로)
+epoch 3 상태로 저장돼버린 경우, `checkpoint_last.pt`(마지막 epoch, keep_rate=target
+도달)의 EMA weight로 배포용 아티팩트를 직접 재구성해야 한다:
+```python
+import torch
+ckpt         = torch.load("checkpoint_last.pt", map_location="cpu", weights_only=False)
+reduced_ckpt = torch.load("../reduced.pt", map_location="cpu", weights_only=False)  # Stage 1 산출물
+tp = ckpt["token_pruner"]
+torch.save({
+    "state_dict":      ckpt["model_ema"],
+    "model_name":      reduced_ckpt["model_name"],
+    "mlp_dims":        reduced_ckpt["mlp_dims"],
+    "token_pruning": {
+        "prune_layers":   tp["prune_layers"],
+        "base_keep_rate": tp["keep_rate"],       # 실제 도달한 값(=target)
+        "fuse_token":     tp["fuse_token"],
+    },
+    "n_params_before": reduced_ckpt.get("n_params_before", 0),
+    "n_params_after":  reduced_ckpt.get("n_params_after", 0),
+}, "token_pruned_last.pt")
+```
+이렇게 만든 `token_pruned_last.pt`는 `eval_token_pruned.py`/`export_onnx.py`가
+`token_pruned_best.pt`와 동일하게 로드할 수 있는 포맷이다.
+
 ### 14.5 Knowledge Distillation — Teacher 선택
 
 Stage 2는 학습 가능한 파라미터를 추가하지 않는다(DynamicViT의 learned predictor와
@@ -1009,39 +1156,61 @@ fine-tuning을 다 돌리기 전에, TopK+Gather만 들어간 최소 toy ONNX �
   TopK/동적 Gather가 없어져 NPU엔 안전하지만, EViT의 핵심 강점(이미지마다 다른
   중요 패치를 적응적으로 고름)을 잃는다.
 
+### 14.6-1 WandB 프로젝트 분리
+
+Stage 1(channel pruning, `train.py`/`eval_reduced.py`)과 Stage 2(token pruning)는
+서로 다른 WandB 프로젝트를 쓴다 — 압축 축이 달라서 같은 프로젝트에 섞으면 비교가
+헷갈리기 때문:
+
+| 스크립트 | 기본 `--wandb-project` |
+|----------|------------------------|
+| `train.py`, `eval_reduced.py` | `vit-pruning` (기존) |
+| `train_token_pruning.py`, `eval_token_pruned.py` | `vit-token-pruning` (신규, 기본값) |
+
+`configs/*_token_prune70.yaml` 4개 모두 `wandb_project: vit-token-pruning`이 이미
+박혀 있어서 별도 인자 없이 `--config`만 써도 자동으로 새 프로젝트로 간다.
+
 ### 14.7 실행 명령어
 
+`_final` 네이밍 컨벤션(프로젝트 루트 노트 참고) 기준. 동일 서버에서 여러 job을
+동시에 돌릴 때는 `torchrun`에 `--master_port`를 job마다 다르게 지정해야
+포트 충돌이 안 난다 (기본 29500 하나만 쓰면 두 번째 torchrun이 바인딩 실패).
+
 ```bash
-# Stage 1 (기존과 동일) → Reduce
+# Stage 1 → Reduce (checkpoint_best.pt가 §13-❽ 문제로 오염됐으면 checkpoint_last.pt 사용)
 python reduce.py --model vit_tiny_patch16_224 \
-  --checkpoint ./output/vit_tiny_prune50_progressive_taylor/checkpoint_best.pt \
-  --output     ./output/vit_tiny_prune50_progressive_taylor/reduced.pt
+  --checkpoint ./output/vit_tiny_30_final/checkpoint_last.pt \
+  --output     ./output/vit_tiny_30_final/reduced.pt
 
-# Stage 2 — Token Pruning fine-tuning
-CUDA_VISIBLE_DEVICES=6,7 torchrun --nproc_per_node=2 train_token_pruning.py \
-  --config configs/vit_tiny_token_prune70.yaml
+# Stage 2 — Token Pruning fine-tuning (GPU 여러 개 동시 돌릴 땐 --master_port 다르게)
+CUDA_VISIBLE_DEVICES=6,7 torchrun --nproc_per_node=2 --master_port=29501 train_token_pruning.py \
+  --config configs/vit_tiny_30_token_prune70.yaml
 
-# 평가
+# 평가 (§14.4-1 문제로 token_pruned_best.pt가 오염됐으면 token_pruned_last.pt 사용)
 python eval_token_pruned.py \
-  --token-pruned ./output/vit_tiny_prune50_token70/token_pruned_best.pt \
+  --token-pruned ./output/vit_tiny_30_final/token_prune70/token_pruned_last.pt \
   --data-path /workspace/etri_iitp/JS/Server_Compression/data/imagenet \
-  --wandb
+  --gpu 4 --wandb
 
-# ONNX 변환 (reduced.pt / token_pruned_best.pt 공용, "token_pruning" 키로 자동 판별)
+# ONNX 변환 (reduced.pt / token_pruned_*.pt 공용, "token_pruning" 키로 자동 판별)
+# --output 생략 시 vit_tiny_c30_reduced.onnx / vit_tiny_c30_token70.onnx로 자동 네이밍 (§9)
+python export_onnx.py --input ./output/vit_tiny_30_final/reduced.pt --verify
+
 python export_onnx.py \
-  --input  ./output/vit_tiny_prune50_token70/token_pruned_best.pt \
-  --output ./output/vit_tiny_prune50_token70/token_pruned.onnx \
-  --verify
+  --input ./output/vit_tiny_30_final/token_prune70/token_pruned_last.pt --verify
 ```
 
-### 14.8 `token_pruned_best.pt` 로드 방법
+### 14.8 `token_pruned_best.pt` / `token_pruned_last.pt` 로드 방법
+
+두 파일 다 포맷이 동일하다 (`best`는 정상적으로 post-ramp에서 갱신된 경우,
+`last`는 §14.4-1 문제로 수동 재구성한 경우) — 로드 코드는 똑같다.
 
 ```python
 import torch, timm
 from pruning.vit_reducing import apply_reduced_config
 from pruning.token_pruning import apply_token_pruning
 
-ckpt   = torch.load("token_pruned_best.pt", map_location="cpu")
+ckpt   = torch.load("token_pruned_best.pt", map_location="cpu")  # 또는 token_pruned_last.pt
 model  = timm.create_model(ckpt["model_name"], pretrained=False)
 apply_reduced_config(model, ckpt["mlp_dims"])                 # Stage 1 구조 축소
 
@@ -1065,6 +1234,35 @@ model.eval()
   `k_norm`)이 달라질 수 있다.** `_validate_model()`이 `hasattr` 체크로 조기
   실패하지만, 정확한 CLS attention score 계산을 보장하려면 timm 업그레이드 시
   `_cls_attention_scores()`를 다시 확인해야 한다.
+- **실제로 겪은 timm 버전 호환성 문제**: 서버에 설치된 timm의 `Attention.forward()`가
+  `is_causal` 키워드 인자를 안 받아서 `TypeError: Attention.forward() got an
+  unexpected keyword argument 'is_causal'`가 났다 (GitHub의 최신 `vision_transformer.py`
+  소스와 실제 설치 버전이 미묘하게 다름). 이 repo의 ViT 분류 파이프라인은
+  `attn_mask`/`is_causal`을 애초에 안 쓰므로(항상 `None`/`False`),
+  `_evit_block_forward()`에서 이 kwarg들을 `self.attn(...)`에 아예 전달하지
+  않도록 고쳐서 해결했다 — 대신 `attn_mask is not None or is_causal`이면
+  `NotImplementedError`로 조기 실패한다. **timm을 업그레이드하거나 다른 서버에
+  이식할 때 이 부분이 다시 깨질 수 있으니, 처음 실행할 때는 아래 스모크 테스트로
+  먼저 검증할 것** (실제 학습 3 epoch을 기다리지 않고 forward+backward만 즉시 확인):
+  ```python
+  import torch, timm
+  from pruning.token_pruning import apply_token_pruning
+
+  model = timm.create_model("vit_tiny_patch16_224", pretrained=False)
+  apply_token_pruning(model, prune_layers=[3, 6, 9], base_keep_rate=0.7, fuse_token=True)
+
+  model.eval()
+  with torch.no_grad():
+      out = model(torch.randn(2, 3, 224, 224))
+  print("forward OK:", tuple(out.shape))
+
+  model.train()
+  model(torch.randn(2, 3, 224, 224)).sum().backward()
+  print("backward OK:", model.blocks[3].attn.qkv.weight.grad is not None)
+  ```
+- **`is_best`가 keep_rate ramp 종료 이전 epoch을 잘못 채택하는 문제 — 겪었고
+  수정함.** §14.4-1 참고. 이미 오염된 run은 `checkpoint_last.pt`에서
+  `token_pruned_last.pt`를 수동으로 재구성해야 한다.
 - **`export_onnx.py`의 CLI 인자가 `--reduced` → `--input`으로 바뀌었다** (Stage 1
   전용이던 로더를 Stage 1/2 공용으로 바꾸면서 이름을 일반화함). 기존 스크립트/
   문서에 `--reduced`로 남아있는 부분은 `--input`으로 교체해야 한다.
@@ -1075,3 +1273,6 @@ model.eval()
 
 *작성: 2026-07 | 서버: `root@59bfae69b3a9` | GPU: Tiny→6,7 / Small→4,5*
 *업데이트: 2026-07 | Stage 2 EViT Token Pruning 추가 (§14)*
+*업데이트: 2026-08 | FLOPs/Activation footprint 분석(§5, §11), `checkpoint_best.pt`/*
+*`token_pruned_best.pt`가 pruning 적용 전 epoch에서 저장되는 문제 발견 및 수정(§13-❽, §14.4-1),*
+*timm `is_causal` 호환성 이슈 수정(§14.9), WandB 프로젝트 분리(§14.6-1), tiny/small 30% config 추가*
