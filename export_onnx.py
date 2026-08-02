@@ -68,16 +68,21 @@ def get_args() -> argparse.Namespace:
                    help="onnxruntime 으로 출력값 일치 검증")
     p.add_argument("--num-threads", type=int, default=0,
                    help="ORT 스레드 수. 0=자동(CPU 코어 수). verify 및 출력 정보에 사용")
+    p.add_argument("--npu-mode",   default="index_select",
+                   choices=["index_select", "onehot_matmul"],
+                   help="--npu-safe 체크포인트에서 gather를 어떻게 표현할지. "
+                        "index_select=실측 여전히 미지원 확인됨 | "
+                        "onehot_matmul=Equal+Cast+MatMul로 대체 (미검증, §14.6-1)")
     return p.parse_args()
 
 
-def load_model(path: str) -> tuple[torch.nn.Module, dict, bool, bool]:
+def load_model(path: str, npu_mode: str = "index_select") -> tuple[torch.nn.Module, dict, bool, bool]:
     """reduced.pt / token_pruned_best.pt 공용 로더.
 
     체크포인트에 "npu_safe": True가 저장돼 있으면(train_token_pruning.py
     --npu-safe로 학습된 경우) pruning/token_pruning_npu.py의 NPU 호환 forward를
-    자동으로 붙이고 export mode(batch=1 index_select)까지 켜준다 — export할 때
-    플래그를 따로 챙길 필요가 없도록.
+    자동으로 붙이고 export mode(batch=1, npu_mode로 gather 대체 전략 선택)까지
+    켜준다 — export할 때 플래그를 따로 챙길 필요가 없도록.
 
     반환: (model, ckpt, has_token_pruning, npu_safe)
     """
@@ -97,8 +102,8 @@ def load_model(path: str) -> tuple[torch.nn.Module, dict, bool, bool]:
                 base_keep_rate=tp_cfg["base_keep_rate"],
                 fuse_token=tp_cfg["fuse_token"],
             )
-            set_npu_export_mode(model, True)
-            print("[NPU-SAFE] token_pruning_npu.py forward + export mode(batch=1) 적용")
+            set_npu_export_mode(model, True, mode=npu_mode)
+            print(f"[NPU-SAFE] token_pruning_npu.py forward + export mode(batch=1, npu_mode={npu_mode}) 적용")
         else:
             apply_token_pruning(
                 model,
@@ -117,7 +122,10 @@ def _short_model_name(name: str) -> str:
     return name.replace("_patch16_224", "")
 
 
-def default_output_path(input_path: str, ckpt: dict, has_token_pruning: bool, npu_safe: bool = False) -> str:
+def default_output_path(
+    input_path: str, ckpt: dict, has_token_pruning: bool,
+    npu_safe: bool = False, npu_mode: str = "index_select",
+) -> str:
     """--output 생략 시 자동 네이밍.
 
     체크포인트에 이미 들어있는 값(model_name, compression_rate 또는
@@ -125,7 +133,9 @@ def default_output_path(input_path: str, ckpt: dict, has_token_pruning: bool, np
     폴더 이름 파싱에 의존하지 않으므로 어디로 옮겨도 파일명만으로 구분 가능하다.
 
         reduced.pt        → vit_tiny_c30_reduced.onnx
-        token_pruned_*.pt → vit_tiny_c30_token70.onnx (npu_safe면 _npusafe 접미사 추가)
+        token_pruned_*.pt → vit_tiny_c30_token70.onnx
+                             (npu_safe면 _npusafe_<mode> 접미사 추가 — 두 mode를
+                             같은 폴더에서 비교할 수 있도록 파일명이 겹치지 않게)
     """
     model = _short_model_name(ckpt["model_name"])
 
@@ -134,7 +144,7 @@ def default_output_path(input_path: str, ckpt: dict, has_token_pruning: bool, np
         n_after  = ckpt.get("n_params_after", 0)
         c_pct = round(100 * (1 - n_after / n_before)) if n_before else 0
         keep_pct = round(ckpt["token_pruning"]["base_keep_rate"] * 100)
-        suffix = "_npusafe" if npu_safe else ""
+        suffix = f"_npusafe_{npu_mode}" if npu_safe else ""
         name = f"{model}_c{c_pct}_token{keep_pct}{suffix}.onnx"
     else:
         c_pct = round(ckpt.get("compression_rate", 0))
@@ -145,13 +155,15 @@ def default_output_path(input_path: str, ckpt: dict, has_token_pruning: bool, np
 
 def main():
     args  = get_args()
-    model, ckpt, has_token_pruning, npu_safe = load_model(args.input)
-    output_path = args.output or default_output_path(args.input, ckpt, has_token_pruning, npu_safe)
+    model, ckpt, has_token_pruning, npu_safe = load_model(args.input, npu_mode=args.npu_mode)
+    output_path = args.output or default_output_path(
+        args.input, ckpt, has_token_pruning, npu_safe, args.npu_mode
+    )
 
     dynamic = args.dynamic
     if npu_safe:
         if args.batch_size != 1:
-            print(f"[NPU-SAFE] --batch-size {args.batch_size} → 1로 강제 (index_select 경로는 batch=1 필요)")
+            print(f"[NPU-SAFE] --batch-size {args.batch_size} → 1로 강제 (batch=1 전용 경로 필요)")
             args.batch_size = 1
         if dynamic:
             print("[NPU-SAFE] --dynamic 무시 → batch 고정 (구조 자체가 batch=1 전용이라 "
@@ -214,10 +226,18 @@ def main():
                   "기준으로 calibration할지 못 정해서 실패할 수 있다 (이전에 겪은 문제).")
         if npu_safe:
             op_types = {n.op_type for n in onnx_model.graph.node}
-            for bad_op in ("ScatterElements", "GatherElements"):
+            always_bad = ["ScatterElements", "GatherElements"]
+            mode_bad = ["Gather"] if args.npu_mode == "onehot_matmul" else []
+            for bad_op in always_bad + mode_bad:
                 if bad_op in op_types:
-                    print(f"  ⚠ {bad_op}가 그래프에 여전히 남아있다 — NPU-safe 수정이 "
-                          f"기대만큼 안 먹힌 부분이 있다는 뜻, qbcompiler 이전에 여기서 먼저 확인됨.")
+                    print(f"  ⚠ {bad_op}가 그래프에 여전히 남아있다 (npu_mode={args.npu_mode}) — "
+                          f"NPU-safe 수정이 기대만큼 안 먹힌 부분이 있다는 뜻, qbcompiler "
+                          f"이전에 여기서 먼저 확인됨.")
+            if args.npu_mode == "onehot_matmul":
+                for expect_op in ("Equal", "MatMul"):
+                    if expect_op not in op_types:
+                        print(f"  ⚠ onehot_matmul 모드인데 {expect_op}가 그래프에 없다 — "
+                              f"const-fold로 사라졌을 수 있음(=idx가 진짜 동적 값이 아닐 수도 있다는 신호).")
     except ImportError:
         print("(onnx 미설치 — graph check 생략. pip install onnx)")
 
