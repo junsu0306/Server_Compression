@@ -140,9 +140,14 @@ class SlimAttentionBlock(nn.Module):
 class ToyPatchSlimViT(nn.Module):
     """patch_embed(Conv2d) + SlimAttentionBlock 한 개짜리 미니 ViT.
 
-    입력을 [1,3,224,224] 이미지로 받는다 — vision_transformer calibration 프리셋이
-    224×224×3 이미지를 넣기 때문. (토큰 텐서를 직접 입력받으면 calibration shape과
-    안 맞아 quantize 단계에서 reshape 에러가 난다.)
+    입력을 **NHWC [1,224,224,3]** 로 받는다 — Mobilint calibration 파이프라인이
+    이미지를 [224,224,3](HWC) 레이아웃으로 넣고 자동 transpose를 안 해주기 때문.
+    (NCHW [1,3,224,224]로 받으면 conv 채널 자리에 224가 들어가 quantize 단계에서
+    "expected 3 channels but got 224"로 실패한다.) 내부에서 NCHW로 permute한 뒤
+    conv를 태운다 — 이 시작 Transpose는 Aries2에서 100% Supported로 확인됨.
+
+    실제 Patch Slimming 모델도 export 시 입력 레이아웃을 이 파이프라인에 맞춰야
+    한다 (또는 compile 설정에서 입력 transpose를 지정).
     """
 
     def __init__(self, dim, heads, img_size, patch, n_out, select_mode="matmul"):
@@ -161,8 +166,9 @@ class ToyPatchSlimViT(nn.Module):
     def select_mode(self, v):
         self.block.select_mode = v
 
-    def forward(self, img: torch.Tensor) -> torch.Tensor:    # img: [B,3,224,224]
-        x = self.patch_embed(img)                            # [B, dim, grid, grid]
+    def forward(self, img: torch.Tensor) -> torch.Tensor:    # img: [B,224,224,3] NHWC
+        x = img.permute(0, 3, 1, 2)                          # → [B,3,224,224] NCHW
+        x = self.patch_embed(x)                              # [B, dim, grid, grid]
         x = x.flatten(2).transpose(1, 2)                     # [B, N_in, dim]
         return self.block(x)                                 # [B, N_out, dim]
 
@@ -184,10 +190,10 @@ def main():
     n_in = (args.img_size // args.patch) ** 2
     assert args.n_out < n_in, f"n_out({args.n_out}) < N_in({n_in}) 이어야 한다"
 
-    # 이미지 입력 미니 ViT — calibration(224×224×3 이미지) shape과 맞추기 위함
+    # 이미지 입력 미니 ViT — calibration 이미지(NHWC [224,224,3]) 레이아웃에 맞춤
     model = ToyPatchSlimViT(args.dim, args.heads, args.img_size, args.patch,
                             args.n_out, args.select_mode).eval()
-    dummy = torch.zeros(1, 3, args.img_size, args.img_size)   # [1,3,224,224]
+    dummy = torch.zeros(1, args.img_size, args.img_size, 3)  # [1,224,224,3] NHWC
 
     with torch.no_grad():
         out = model(dummy)
