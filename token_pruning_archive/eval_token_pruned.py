@@ -12,6 +12,12 @@ from __future__ import annotations
 
 import argparse
 import os
+import sys
+
+# 아카이브 경로 처리 (train_token_pruning.py 참고)
+_REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if _REPO_ROOT not in sys.path:
+    sys.path.insert(0, _REPO_ROOT)
 
 import torch
 import timm
@@ -19,7 +25,7 @@ import timm.data
 from torchvision import datasets
 
 from pruning.vit_reducing import apply_reduced_config
-from pruning.token_pruning import apply_token_pruning
+from token_pruning import apply_token_pruning       # 같은 아카이브 폴더의 sibling 모듈
 from engine import evaluate
 
 

@@ -55,7 +55,7 @@ from typing import List, Optional
 import torch
 import torch.nn as nn
 
-from pruning.token_pruning import _cls_attention_scores, apply_token_pruning
+from token_pruning import _cls_attention_scores, apply_token_pruning  # 같은 아카이브 폴더의 sibling
 
 
 # ── batch=1 전용 gather 대체 구현 ───────────────────────────────────────────────

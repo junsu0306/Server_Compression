@@ -6,9 +6,11 @@
 > 레퍼런스: EfficientViT Soft Pruning (동일 방법론을 timm ViT에 이식)
 
 > **이 문서는 Stage 1(channel pruning, FFN width 압축)만 다룬다.**
-> Stage 2(EViT token pruning, sequence 차원 압축)는 별도 문서
-> [TOKEN_PRUNING.md](TOKEN_PRUNING.md)로 분리했다 — 내용이 한 파일에 다 있으니
-> 너무 헷갈려서 나눴다.
+> Stage 2(EViT token pruning, sequence 차원 압축)는 NPU 배포 실패로 아카이브됐고,
+> 코드·설정·실패 분석 전체를 [token_pruning_archive/](token_pruning_archive/)로
+> 옮겼다 ([README](token_pruning_archive/README.md) ·
+> [TOKEN_PRUNING.md](token_pruning_archive/TOKEN_PRUNING.md)).
+> 후속 방향(정적 Patch Slimming)은 [patch_slimming/](patch_slimming/) 참고.
 
 ---
 
@@ -28,7 +30,8 @@
 12. [핵심 설계 결정 사항](#12-핵심-설계-결정-사항)
 13. [주의사항 & 트러블슈팅](#13-주의사항--트러블슈팅)
 
-> Stage 2(Token Pruning) 전용 목차는 [TOKEN_PRUNING.md](TOKEN_PRUNING.md) 참고.
+> Stage 2(Token Pruning, 아카이브) 전용 목차는
+> [token_pruning_archive/TOKEN_PRUNING.md](token_pruning_archive/TOKEN_PRUNING.md) 참고.
 
 ---
 
@@ -36,41 +39,41 @@
 
 ```
 Server_Compression/
-├── configs/
+├── configs/                      ← Stage 1(channel pruning) 설정만
 │   ├── vit_tiny_prune50.yaml                    ← Global + KD
 │   ├── vit_tiny_prune30.yaml
 │   ├── vit_small_prune50.yaml
 │   ├── vit_small_prune30.yaml
 │   ├── vit_tiny_prune50_progressive.yaml        ← Global + KD + Progressive + Taylor EMA
-│   ├── vit_small_prune50_progressive.yaml       ← Global + KD + Progressive + Taylor EMA
-│   ├── vit_tiny_token_prune70.yaml              ← Stage 2 (TOKEN_PRUNING.md)
-│   ├── vit_small_token_prune70.yaml             ← Stage 2 (TOKEN_PRUNING.md)
-│   ├── vit_tiny_30_token_prune70.yaml           ← Stage 2 (TOKEN_PRUNING.md)
-│   ├── vit_small_30_token_prune70.yaml          ← Stage 2 (TOKEN_PRUNING.md)
-│   └── vit_tiny_30_token_prune70_npu_test.yaml  ← Stage 2 NPU 테스트 (TOKEN_PRUNING.md §9.2)
+│   └── vit_small_prune50_progressive.yaml       ← Global + KD + Progressive + Taylor EMA
 ├── pruning/
 │   ├── __init__.py
 │   ├── vit_pruning.py           ← ViTPruner: Soft Pruning 컨트롤러 (channel, Stage 1)
 │   ├── vit_reducing.py          ← reduce_vit_model: Dense 변환 (Stage 1 → 완료 후)
-│   ├── token_pruning.py         ← EvitTokenPruner: EViT Token Pruning (Stage 2, TOKEN_PRUNING.md)
-│   ├── token_pruning_npu.py     ← NPU 호환 forward 변형 (Stage 2, TOKEN_PRUNING.md §9.2)
 │   └── vit_flops.py             ← FLOPs / Activation Footprint 분석적 추정 (§5, §11)
-├── engine.py                    ← train_one_epoch / evaluate (Stage 1/2 공용)
+├── engine.py                    ← train_one_epoch / evaluate (Stage 1 + 아카이브 공용)
 ├── train.py                     ← Stage 1 학습 진입점 (단일GPU / DDP, --config 지원)
 ├── reduce.py                    ← Reducing CLI (Stage 1 완료 후)
 ├── eval_baseline.py             ← Pruning 전 pretrained 모델 baseline 평가
 ├── eval_reduced.py              ← Stage 1 Reduced 모델 val 평가 → WandB test 기록
-├── train_token_pruning.py       ← Stage 2 학습 진입점 (TOKEN_PRUNING.md)
-├── eval_token_pruned.py         ← Stage 2 평가 (TOKEN_PRUNING.md)
-├── export_onnx.py               ← Reduced / Token Pruned 모델 → ONNX 변환 (Stage 1/2 공용, 자동 판별)
+├── export_onnx.py               ← Reduced(reduced.pt) → ONNX 변환 (Stage 1 전용, §9)
 ├── measure_memory.py            ← 아키텍처 분석 & 파라미터 프로파일링
+├── patch_slimming/              ← 후속 방향: 정적 Patch Slimming (PS-ViT)
+│   ├── PATCH_SLIMMING_IMPLEMENTATION_SPEC.md
+│   └── toy_rectangular_attention.py  ← NPU 사전검증 toy (rectangular attention)
+├── token_pruning_archive/       ← EViT Token Pruning 실험 (아카이브 — NPU 배포 실패)
+│   ├── README.md
+│   ├── TOKEN_PRUNING.md         ← Stage 2 상세 보고서 + NPU 실패 분석
+│   ├── token_pruning.py         ← EvitTokenPruner
+│   ├── token_pruning_npu.py     ← NPU 우회 실험 forward
+│   ├── train_token_pruning.py / eval_token_pruned.py / export_onnx.py
+│   └── configs/*.yaml           ← token pruning 설정 5종
 ├── data/
 │   └── imagenet/                ← ImageNet (서버에만 존재, gitignore)
 │       ├── train/               (1,281,167 images, 1000 classes)
 │       └── val/                 (50,000 images, 1000 classes)
 ├── output/                      ← 체크포인트 저장 (gitignore)
-├── IMPLEMENTATION.md            ← 이 문서 (Stage 1)
-└── TOKEN_PRUNING.md             ← Stage 2 상세 문서
+└── IMPLEMENTATION.md            ← 이 문서 (Stage 1)
 ```
 
 > **네이밍 컨벤션**: 각 모델×압축률 조합 중 `progressive_taylor`(Stage 1 권장 설정)로
@@ -678,24 +681,21 @@ AFTER:  2,862,256 params  (49.94% removed)
 
 ## 9. ONNX 변환
 
-> **주의**: `export_onnx.py`의 `--reduced` 인자는 Stage 2(TOKEN_PRUNING.md) 추가 시
-> `--input`으로 이름이 바뀌었다 (reduced.pt / token_pruned_*.pt 공용 로더).
+> **주의**: `export_onnx.py`는 이제 **Stage 1(reduced.pt) 전용**이다. 예전에
+> 인자가 `--reduced` → `--input`으로 바뀌었고, Stage 2(token_pruned) 변환과
+> `--npu-safe`/`--npu-mode` 옵션은 [token_pruning_archive/export_onnx.py](token_pruning_archive/export_onnx.py)로
+> 분리했다 (NPU 실패로 아카이브됨 —
+> [TOKEN_PRUNING.md §9](token_pruning_archive/TOKEN_PRUNING.md#9-npu-배포)).
 
-`--output`을 생략하면 체크포인트 메타데이터(모델명·압축률·keep_rate)로
-**자동 네이밍**한다 — `reduced.onnx`/`token_pruned.onnx`처럼 모델마다 똑같은
-이름이 나오면 폴더 밖으로 꺼냈을 때 구분이 안 되는 문제를 피하기 위함이다.
-폴더 이름을 파싱하는 게 아니라 체크포인트 안의 값(`compression_rate`,
-`n_params_before/after`, `token_pruning.base_keep_rate`)만 쓰므로 어디로
-옮겨도 파일명만으로 구분된다.
+`--output`을 생략하면 체크포인트 메타데이터(모델명·압축률)로 **자동 네이밍**한다 —
+`reduced.onnx`처럼 모델마다 똑같은 이름이 나오면 폴더 밖으로 꺼냈을 때 구분이 안 되는
+문제를 피하기 위함이다. 폴더 이름을 파싱하는 게 아니라 체크포인트 안의 값
+(`compression_rate`)만 쓰므로 어디로 옮겨도 파일명만으로 구분된다.
 
 ```bash
 # --output 생략 → 자동 네이밍
 python export_onnx.py --input ./output/vit_tiny_30_final/reduced.pt --verify
 #   → ./output/vit_tiny_30_final/vit_tiny_c30_reduced.onnx
-
-python export_onnx.py \
-  --input ./output/vit_tiny_30_final/token_prune70/token_pruned_last.pt --verify
-#   → ./output/vit_tiny_30_final/token_prune70/vit_tiny_c30_token70.onnx
 ```
 
 - `--output`: 직접 지정하면 자동 네이밍 대신 그 경로를 그대로 씀
@@ -703,7 +703,6 @@ python export_onnx.py \
 - `--verify`: onnxruntime vs PyTorch 출력값 비교
 - `--num-threads N`: 추론 스레드 수 (0=auto, 기본값)
 - opset 17, constant folding 적용
-- `--npu-mode`, `--npu-safe` 자동 감지 등 Stage 2 전용 옵션은 [TOKEN_PRUNING.md §9](TOKEN_PRUNING.md#9-npu-배포) 참고
 
 ---
 
@@ -949,8 +948,9 @@ print(f"best epoch={ckpt['epoch']}  ramp_end={warmup+ramp}  "
 
 **근본 수정 (권장, 아직 `train.py`에는 미반영)**: `is_best` 판정을 `epoch >=
 prune_warmup_epochs + prune_ramp_epochs`(=target sparsity 도달 이후) 조건으로
-gate해야 한다. `train_token_pruning.py`(Stage 2)에는 이미 이 수정이 적용돼 있다
-([TOKEN_PRUNING.md §4.1](TOKEN_PRUNING.md#41-is_best-판정--stage-1과-동일한-함정을-stage-2에서도-발견))
+gate해야 한다. 아카이브된 `train_token_pruning.py`(Stage 2)에는 이미 이 수정이
+적용돼 있다
+([token_pruning_archive/TOKEN_PRUNING.md §4.1](token_pruning_archive/TOKEN_PRUNING.md#41-is_best-판정--stage-1과-동일한-함정을-stage-2에서도-발견))
 — 동일한 패턴을 `train.py`에도 적용할 수 있다.
 
 ---
@@ -958,6 +958,7 @@ gate해야 한다. `train_token_pruning.py`(Stage 2)에는 이미 이 수정이 
 *작성: 2026-07 | 서버: `root@59bfae69b3a9` | GPU: Tiny→6,7 / Small→4,5*
 *업데이트: 2026-08 | FLOPs/Activation footprint 분석(§5, §11) 추가,*
 *`checkpoint_best.pt`가 pruning 적용 전 epoch에서 저장되는 문제 발견 및 수정(§13-❽)*
-*업데이트: 2026-08 | Stage 2(EViT Token Pruning) 관련 내용 전부 [TOKEN_PRUNING.md](TOKEN_PRUNING.md)로*
-*분리 — 알고리즘, NPU 배포(Aries2/qbcompiler 실측 결과), 실행 명령어, 트러블슈팅 등*
-*자세한 이력은 그 문서의 자체 업데이트 로그 참고*
+*업데이트: 2026-08 | Stage 2(EViT Token Pruning) 관련 코드·설정·문서 전부*
+*[token_pruning_archive/](token_pruning_archive/)로 이동(NPU 배포 실패로 아카이브),*
+*export_onnx.py는 Stage 1 전용으로 축소. 후속 방향은 정적 Patch Slimming*
+*([patch_slimming/](patch_slimming/), rectangular attention NPU toy 검증 추가)*

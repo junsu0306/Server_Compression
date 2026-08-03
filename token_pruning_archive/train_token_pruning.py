@@ -31,9 +31,18 @@ Stage 2 — reduce.py로 물리적으로 축소된 Dense 모델 위에 EViT Toke
 from __future__ import annotations
 
 import os
+import sys
 import argparse
 import yaml
 from pathlib import Path
+
+# ── 아카이브 경로 처리 ──────────────────────────────────────────────────────────
+# 이 스크립트는 token_pruning_archive/ 안에 있다. repo 루트의 engine/pruning을
+# import 하려면 루트를 sys.path에 넣어야 하고, 같은 폴더의 token_pruning 모듈은
+# 스크립트 디렉터리(sys.path[0])에서 바로 찾힌다. CWD와 무관하게 동작한다.
+_REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if _REPO_ROOT not in sys.path:
+    sys.path.insert(0, _REPO_ROOT)
 
 import torch
 import torch.nn as nn
@@ -45,7 +54,7 @@ import timm.data
 from torchvision import datasets
 
 from pruning.vit_reducing import apply_reduced_config
-from pruning.token_pruning import EvitTokenPruner
+from token_pruning import EvitTokenPruner       # 같은 아카이브 폴더의 sibling 모듈
 from engine import train_one_epoch, evaluate
 
 
@@ -368,7 +377,7 @@ def main():
 
     tp_kwargs = {}
     if args.npu_safe:
-        from pruning.token_pruning_npu import _evit_block_forward_npu
+        from token_pruning_npu import _evit_block_forward_npu
         tp_kwargs["forward_fn"] = _evit_block_forward_npu
         if is_main:
             print("[NPU-SAFE] pruning/token_pruning_npu.py의 forward 사용 "
