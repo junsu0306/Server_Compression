@@ -70,11 +70,20 @@ def _onehot_gather(src: torch.Tensor, idx: torch.Tensor) -> torch.Tensor:
     idx: (k,) — 런타임 값(top-k 결과 등). idx가 그래프에서 상수로 접히지 않아야
          (즉 실제로 export 시 데이터 의존적이어야) 이 우회가 의미가 있다.
     반환: (k,) 또는 (k, C)
+
+    주의: matmul은 항상 2D×2D로 넣는다. src가 1D(N,)일 때 그냥 (k,N)@(N,)로
+    넘기면 qbcompiler의 MatMul 컨버터가 "matmul shape not implemented for
+    (k,N),(N,)"로 실패한다(실측 확인됨) — (N,C)/(N,1) 형태의 2D×2D 30개는
+    전부 100% Supported였다. 그래서 1D는 (N,1)로 unsqueeze해서 2D로 맞추고
+    끝에 squeeze로 되돌린다.
     """
     N = src.shape[0]
     arange_n = torch.arange(N, device=src.device)             # 상수
     onehot = (idx.unsqueeze(-1) == arange_n).to(src.dtype)    # (k, N) — Equal + Cast
-    return onehot @ src                                        # (k,) 또는 (k, C) — MatMul
+
+    if src.dim() == 1:
+        return (onehot @ src.unsqueeze(-1)).squeeze(-1)       # (k,N)@(N,1)=(k,1) → (k,)
+    return onehot @ src                                        # (k,N)@(N,C)=(k,C)
 
 
 def _npu_select(src: torch.Tensor, idx: torch.Tensor, mode: str) -> torch.Tensor:
