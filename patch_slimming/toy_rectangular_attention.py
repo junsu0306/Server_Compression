@@ -137,12 +137,43 @@ class SlimAttentionBlock(nn.Module):
         return x_out                                # [B, N_out, D]
 
 
+class ToyPatchSlimViT(nn.Module):
+    """patch_embed(Conv2d) + SlimAttentionBlock 한 개짜리 미니 ViT.
+
+    입력을 [1,3,224,224] 이미지로 받는다 — vision_transformer calibration 프리셋이
+    224×224×3 이미지를 넣기 때문. (토큰 텐서를 직접 입력받으면 calibration shape과
+    안 맞아 quantize 단계에서 reshape 에러가 난다.)
+    """
+
+    def __init__(self, dim, heads, img_size, patch, n_out, select_mode="matmul"):
+        super().__init__()
+        assert img_size % patch == 0
+        grid = img_size // patch
+        n_in = grid * grid                                   # 224/16=14 → 196
+        self.patch_embed = nn.Conv2d(3, dim, kernel_size=patch, stride=patch)
+        self.block = SlimAttentionBlock(dim, heads, n_in, n_out, select_mode)
+
+    @property
+    def select_mode(self):
+        return self.block.select_mode
+
+    @select_mode.setter
+    def select_mode(self, v):
+        self.block.select_mode = v
+
+    def forward(self, img: torch.Tensor) -> torch.Tensor:    # img: [B,3,224,224]
+        x = self.patch_embed(img)                            # [B, dim, grid, grid]
+        x = x.flatten(2).transpose(1, 2)                     # [B, N_in, dim]
+        return self.block(x)                                 # [B, N_out, dim]
+
+
 def main():
     p = argparse.ArgumentParser("Patch Slimming rectangular-attention toy for NPU compile test")
-    p.add_argument("--n-in",  type=int, default=196, help="입력 토큰 수")
-    p.add_argument("--n-out", type=int, default=138, help="유지할 토큰 수 (< n-in)")
-    p.add_argument("--dim",   type=int, default=192, help="embed dim (Tiny=192, Small=384)")
-    p.add_argument("--heads", type=int, default=3,   help="heads (Tiny=3, Small=6)")
+    p.add_argument("--img-size", type=int, default=224, help="입력 이미지 크기")
+    p.add_argument("--patch",    type=int, default=16,  help="patch 크기 → N_in = (img/patch)^2")
+    p.add_argument("--n-out",    type=int, default=138, help="유지할 토큰 수 (< N_in)")
+    p.add_argument("--dim",      type=int, default=192, help="embed dim (Tiny=192, Small=384)")
+    p.add_argument("--heads",    type=int, default=3,   help="heads (Tiny=3, Small=6)")
     p.add_argument("--select-mode", default="matmul", choices=["matmul", "gather"],
                    help="matmul=상수 선택행렬(권장) | gather=index_select(실측 미지원, 비교용)")
     p.add_argument("--opset", type=int, default=17)
@@ -150,10 +181,13 @@ def main():
     p.add_argument("--verify", action="store_true")
     args = p.parse_args()
 
-    assert args.n_out < args.n_in, "n_out < n_in 이어야 rectangular attention이 의미 있다"
+    n_in = (args.img_size // args.patch) ** 2
+    assert args.n_out < n_in, f"n_out({args.n_out}) < N_in({n_in}) 이어야 한다"
 
-    model = SlimAttentionBlock(args.dim, args.heads, args.n_in, args.n_out, args.select_mode).eval()
-    dummy = torch.zeros(1, args.n_in, args.dim)
+    # 이미지 입력 미니 ViT — calibration(224×224×3 이미지) shape과 맞추기 위함
+    model = ToyPatchSlimViT(args.dim, args.heads, args.img_size, args.patch,
+                            args.n_out, args.select_mode).eval()
+    dummy = torch.zeros(1, 3, args.img_size, args.img_size)   # [1,3,224,224]
 
     with torch.no_grad():
         out = model(dummy)
@@ -166,12 +200,13 @@ def main():
 
     print(f"[Toy] select_mode={args.select_mode}  forward OK  "
           f"in={tuple(dummy.shape)} → out={tuple(out.shape)}")
-    print(f"      keep_ids(상수, 앞 8개)= {model.keep_ids[:8].tolist()} ...  총 {model.keep_ids.numel()}개")
+    print(f"      N_in={n_in}  N_out={args.n_out}  keep_ids(앞 8)= "
+          f"{model.block.keep_ids[:8].tolist()} ...")
     print(f"      matmul vs gather 결과 최대차이 = {max_diff:.2e}  (동일해야 정상)")
-    print(f"      attention shape = [1, {args.heads}, {args.n_out}, {args.n_in}]  (rectangular)")
+    print(f"      attention shape = [1, {args.heads}, {args.n_out}, {n_in}]  (rectangular)")
 
     out_path = args.output or (
-        f"patch_slimming/toy_rect_{args.select_mode}_in{args.n_in}_out{args.n_out}_d{args.dim}.onnx"
+        f"patch_slimming/toy_rect_{args.select_mode}_in{n_in}_out{args.n_out}_d{args.dim}.onnx"
     )
 
     print(f"\nExporting → {out_path} (opset {args.opset}, batch=1 고정) ...")
