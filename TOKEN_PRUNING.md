@@ -331,23 +331,32 @@ fine-tuning을 다 돌리기 전에, 실제 구현이 쓰는 정확한 op(§9.2 
 ### 9.2 실제 NPU(Aries2 / qbcompiler) 컴파일 실패 사례와 해결 시도
 
 `vit_tiny_c30_token70.onnx`(Stage 2 산출물)를 Mobilint qbcompiler에 넣었더니
-컴파일이 실패했다. 원인 3가지:
+컴파일이 실패했다. 알고리즘은 그대로 두고 구현만 바꿔가며 총 4번 시도했고,
+모든 시도가 결국 같은 종류의 지점에서 막혔다 (`pruning/token_pruning_npu.py`).
+
+> **중요한 정정**: 아래 "Unsupported"는 그 자체로 실패 원인이 아니다. qbcompiler는
+> 미지원 op을 CPU 서브그래프로 떼어내는 `cpu_offload` 기능이 있고, 실제로 시도
+> 2~4 모두 **HL 컴파일(NPU/CPU 분할) 자체는 매번 성공**했다 — `output` 1개짜리
+> 그래프까지 정상적으로 나왔다. 진짜 실패는 그 다음 **quantize 단계**에서, CPU로
+> 떼어낸 서브그래프를 처리하는 코드에서 났다. 즉 "Aries2가 이 연산을 원천적으로
+> 지원 안 한다"보다는 "qbcompiler의 CPU-offload 경로에 결함이 있다"는 쪽이
+> 더 정확한 진단이다 (그래도 최종 배포 판단은 바뀌지 않는다 — §9.2 결론 참고).
+
+#### 시도 1 — 원본 그대로 (scatter + batched gather)
 
 | 문제 | 원인 |
 |------|------|
 | `ScatterElements` 미지원 (blocks 3, 6, 9) | `_complement_idx()`가 `torch.scatter`로 "top-k에 안 뽑힌 나머지 인덱스"를 구하는 트릭을 씀 |
 | `GatherElements` 미지원 (9개 노드, 전부 Unsupported) | `torch.gather(dim=1, index=(B,k,C))`가 배치마다 다른 인덱스를 한 번에 처리하려고 element-wise gather로 export됨 — §9.1에서 확인한 단순 `Gather`(index_select류)와는 다른 op |
-| ONNX 그래프 output이 1개가 아니라 7개 | blocks 3/6/9의 `TopK` 중간 결과(값+인덱스)가 그래프 output으로 노출됨 → quantizer가 output 1개를 가정하는데 7개가 나와서 calibration 대상을 못 정함 → `modelInputNames` 개수 불일치로 quantize 자체가 실패 |
+| ONNX 그래프 output이 1개가 아니라 7개 | blocks 3/6/9의 `TopK` 중간 결과(값+인덱스)가 그래프 output으로 노출됨 |
 
 핵심 교훈: **"TopK/Gather가 컴파일된다"와 "이 구현이 실제로 쓰는 TopK/Gather 변형이
 컴파일된다"는 다른 이야기다.** `torch.gather`/`torch.scatter`는 배치별·요소별
 동적 인덱스를 다루는 `GatherElements`/`ScatterElements`로 export되는데, 이건
 단순 "N개 중 K개를 인덱스 리스트로 뽑는" `Gather`보다 훨씬 지원이 안 되는
-연산이다. 다음에 다른 NPU 타겟으로 이식할 때는 최소 toy 그래프도 실제 코드가
-쓰는 정확한 op(이 경우 `GatherElements`/`ScatterElements`)로 맞춰서 테스트해야
-한다.
+연산이다.
 
-**해결 시도 — 알고리즘은 그대로 두고 구현만 재작성** (`pruning/token_pruning_npu.py`):
+#### 시도 2 — scatter 제거 + batch=1 index_select
 
 1. **ScatterElements 제거**: `cls_attn`이 이미 정렬 가능한 점수 배열이므로,
    "top-k에 안 뽑힌 나머지"는 `_complement_idx()`(scatter+sort 트릭) 없이
@@ -357,65 +366,87 @@ fine-tuning을 다 돌리기 전에, 실제 구현이 쓰는 정확한 op(§9.2 
    _, compl = torch.topk(cls_attn, n_patch - n_keep, largest=False)  # scatter 불필요
    ```
    결과는 수학적으로 완전히 동일하다 — 학습 중에도 항상 이 버전을 쓴다(정확도에
-   영향 없음, 그래프만 단순해짐). **결과: 성공.** 실제 컴파일 로그에
-   `ScatterElements`가 더 이상 나타나지 않음을 확인.
+   영향 없음, 그래프만 단순해짐). **결과: 성공.** 컴파일 로그에서
+   `ScatterElements`가 완전히 사라짐.
 
 2. **GatherElements → 배치=1이면 plain Gather**: NPU 추론은 거의 항상 batch=1
    (streaming)이므로, export 시점에만 배치 축을 떼어내고
-   `torch.index_select(dim=0, index=1D)`로 바꾼다. 이건 "N개 중 K개 행을
-   1차원 인덱스로 뽑기"라는 단순 연산이라 `Gather`로 export된다. 학습(batch>1)
-   중에는 여전히 기존 `torch.gather`를 쓴다 — `block._evit_npu_export` 플래그로
-   전환한다. **결과: 실패.** `GatherElements`는 그래프에서 사라졌지만, 실제
-   컴파일 로그에서 plain `Gather`도 9개 전부 `Unsupported(0%)`로 나왔다. op
-   이름 문제가 아니라 **런타임에 계산된 인덱스로 하는 gather 자체가 Aries2에서
-   안 된다**는 뜻.
+   `torch.index_select(dim=0, index=1D)`로 바꾼다. 학습(batch>1) 중에는 여전히
+   기존 `torch.gather`를 쓴다 — `block._evit_npu_export` 플래그로 전환.
+   **결과: 실패.** `GatherElements`는 사라졌지만 plain `Gather`도 9개 전부
+   `Unsupported(0%)`. op 이름 문제가 아니라 **런타임에 계산된 인덱스로 하는
+   gather 자체**가 문제였다.
 
-3. **output 7개 → dynamo=False**: `/blocks/blocks.3/TopK_output_0` 같은
-   네이밍은 torch 2.x의 dynamo 기반 ONNX exporter 흔적으로 보인다. **결과:
-   애초에 문제가 아니었음.** `[parser]` 로그가 HL 컴파일 전/후 두 번 나오는데,
-   HL 컴파일 후에는 qbcompiler가 자체적으로 안 쓰이는 TopK 중간 출력을
-   dead-code로 정리해서 이미 output 1개(`output`, (1,1000))였다. 실제 최종
-   실패 원인은 output 개수가 아니라 2번(Gather 9개 unsupported)이 CPU
-   fallback되면서 그 경계 텐서들이 quantizer 기준 "input"으로 잘못 잡히는
-   것(`modelInputNames expected 1 got 10`)이었다 — output 개수와는 무관.
+3. **output 7개**: 실제로는 문제가 아니었다. HL 컴파일 후 qbcompiler가 자체적으로
+   안 쓰이는 TopK 중간 출력을 dead-code로 정리해서 이미 output 1개였다. 최종
+   실패는 Gather 9개가 CPU offload되면서 그 경계 텐서가 quantizer 기준 "input"
+   으로 잘못 잡히는 것 (`modelInputNames expected 1 got 10`) — output 개수와 무관.
 
-4. **(추가 시도) Gather를 One-hot + MatMul로 대체**: 2번이 하드 블로커로
-   보이자, gather를 아예 없애는 대신 수학적으로 동일한 형태로 표현을 바꿔봤다.
-   `gather(src, idx)[i] == src[idx[i]]`는 `onehot[i,j]=1 if j==idx[i] else 0`
-   일 때 `(onehot @ src)[i] == src[idx[i]]`와 같다 — `Equal`(onehot 생성) +
-   `Cast` + `MatMul`. `mode="onehot_matmul"`로 `pruning/token_pruning_npu.py`에
-   구현.
-   **결과: 부분 성공 + 근본 벽 재확인.** `Gather`는 그래프에서 완전히
-   사라졌고 `MatMul`은 33개 중 33개(100%) Supported로 확인됐다 — one-hot
-   행렬곱 자체는 Aries2가 잘 받는다. 다만:
-   - **버그 하나 발견**: `(k,N)@(N,)` 형태(2D×1D, `non_topk_attn` 계산)의
-     matmul 3개가 `matmul shape not implemented for (58,196), (196,)`로
-     변환 실패. `(N,C)`/`(N,1)` 형태(2D×2D) 30개는 전부 정상이었다. 원인은
-     구현 버그(1D 벡터를 그대로 matmul에 넣음) — `_onehot_gather()`에서
-     1D 입력을 `(N,1)`로 unsqueeze해서 항상 2D×2D로 맞추도록 수정함.
-   - **더 근본적인 문제**: 이 버그와 별개로, **`Equal`(TensorCmp)과 `Cast`가
-     9개 전부 여전히 `Unsupported(0%)`**로 나왔다. `idx`(top-k 결과)가
-     런타임 값이라 `onehot = (idx == arange_n)` 단계에서부터 막힌다. 이번엔
-     quantizer의 정상 에러가 아니라 파싱 단계 크래시(`[EXC] ... what=map::at`)
-     까지 발생 — 미지원 서브그래프 구조가 컴파일러 내부 로직 자체를 못
-     감당하는 것으로 보인다.
+#### 시도 3 — Gather를 One-hot + MatMul로 대체 (`mode="onehot_matmul"`)
 
-**결론: `Gather`(직접 인덱싱)와 `Equal`(비교 기반 인덱싱) 둘 다 런타임 값이
-들어가면 실패한다.** ONNX에서 "런타임 값으로 무언가를 선택/비교"하는 걸 표현하는
-가장 기본적인 두 가지 방법을 다 시도해본 셈이라, 더 단순화할 op이 마땅치 않다.
-이 시점부터는 "구현을 더 파봐야 하는 문제"가 아니라 **"Aries2가 이 클래스의
-연산(데이터 의존적 인덱싱/비교) 자체를 지원하지 않는다"는 결론에 훨씬 가깝다.**
+`gather(src, idx)[i] == src[idx[i]]`는 `onehot[i,j]=1 if j==idx[i] else 0`일 때
+`(onehot @ src)[i] == src[idx[i]]`와 같다 — `Equal`(onehot 생성) + `Cast` +
+`MatMul`로 gather를 재표현.
+
+**결과: 부분 성공.** `Gather`는 그래프에서 완전히 사라졌다. 다만:
+- **버그 발견**: `(k,N)@(N,)` 형태(2D×1D, `non_topk_attn` 계산)의 matmul
+  3개가 `matmul shape not implemented for (58,196), (196,)`로 변환 실패.
+  `(N,C)`/`(N,1)` 형태(2D×2D)는 정상. `_onehot_gather()`에서 1D 입력을
+  `(N,1)`로 unsqueeze해서 항상 2D×2D로 맞추도록 수정.
+- **크래시**: `Equal`(TensorCmp)의 출력을 `Cast`가 받는 지점에서
+  `[EXC] Operator parse name=.../Cast_2_output_0 type=CastOptions what=map::at`.
+  quantize 단계에서 CPU-offload 서브그래프를 파싱하다 난 크래시.
+
+#### 시도 4 — matmul 버그 수정 + `cpu_offload=True` 명시적으로 켜고 재시도
+
+시도 3의 matmul 버그를 고치고, 컴파일 명령에 `cpu_offload: True`를 명시해서
+다시 시도했다 (`token_pruned_best.pt` weight는 그대로 재사용 — 재학습 없이
+export만 다시 함).
+
+**결과: 여전히 같은 지점에서 크래시.**
+- matmul 버그는 확실히 고쳐짐 — `MatMul`이 36개 전부(100%) `Supported`,
+  "CONVERSION FAILED" 경고도 더 이상 안 나옴.
+- `cpu_offload=True`가 컴파일 배너에 명시적으로 찍혀 있었는데도 크래시는
+  동일하게 재현: `[EXC] Operator parse name=.../Cast_output_0 type=CastOptions
+  what=map::at` — 이번엔 blocks.6의 첫 번째 `Cast`(Equal 바로 다음)에서.
+  → **"cpu_offload가 꺼져 있어서"라는 가설도 배제됨.**
+- 이번엔 크래시 덤프의 `"tensors"` 배열이 비어있지 않았다 — `Constant_15/19/21`류
+  상수 텐서(9개) 정보가 정상적으로 들어있었다. 크래시 난 `Cast` 오퍼레이터가
+  참조하는 입력 ID(예: 19)는 바로 앞 `Equal` 오퍼레이터의 출력이었고, 이건
+  `"tensors"`가 아니라 별도의 `"activations"` 리스트 쪽에 기록돼 있었다.
+  **가설(미확정)**: `Equal`의 출력 dtype이 `bool`인데, 이 CPU-offload
+  서브그래프 직렬화/파싱 코드가 `bool` dtype 중간 텐서를 제대로 처리 못 하는
+  것으로 추정된다 — 매번 크래시가 정확히 "TensorCmp(bool 출력) → Cast(bool→
+  float32)" 경계에서만 재현됐다.
+
+**결론:**
+
+1. **HL 컴파일(그래프를 NPU/CPU로 분할) 자체는 4번 다 성공했다.** 문제는 항상
+   그 다음 quantize 단계, CPU offload된 서브그래프를 처리하는 코드에 있었다.
+2. 크래시는 `Gather`든 `Equal`이든 항상 정확히 **"런타임 값으로 뭔가를 선택/비교"
+   하는 지점**에서만 났다 — 이건 op 이름의 문제가 아니라, Aries2가 컴파일
+   시점에 모든 텐서 주소·DMA 스케줄을 확정해야 하는 static shape·schedule
+   설계이기 때문으로 보인다(§9.1). CPU offload 경로가 이 패턴을 제대로 처리 못
+   하는 게 (아마도 bool dtype 관련) qbcompiler 쪽 버그일 가능성이 높다.
+3. **설령 이 버그가 고쳐져 CPU offload로 "돌아간다" 해도, 실용성은 낮을 것으로
+   예상된다.** pruning 지점이 3곳(block 3/6/9)이라 NPU↔CPU 왕복이 6번
+   발생하는데, 데이터량(196×192 float32 ≈ 150KB)보다 왕복마다 붙는 고정
+   동기화 오버헤드가 문제다 — ViT-Tiny처럼 원래 추론이 짧은 모델에서는 이
+   오버헤드가 token pruning으로 아낀 연산량(~30%)을 상쇄하고도 남을 가능성이
+   높다. 즉 "컴파일은 되는데 안 하느니만 못한" 결과가 나오기 쉽다.
 
 **남은 선택지:**
-- Mobilint에 이 두 번의 실측 결과(GatherElements/Gather/Equal/Cast 전부
-  런타임 입력에서 실패)를 들고 직접 문의 — 혹시 지원되는 특정 패턴이 있는지
-  확인
+- Mobilint에 이번 시도 4까지의 구체적인 repro(정확한 크래시 지점, cpu_offload
+  이미 켜져 있었다는 점, bool dtype 가설)를 들고 문의 — 비용이 거의 안 들고,
+  고쳐지면 최소한 "동작은 한다"는 실측 데이터를 얻는다 (다만 위 3번 때문에
+  느릴 가능성이 높다는 것도 함께 확인 요청)
 - **알고리즘을 static/global token pruning으로 전환** — 이미지마다 다른
   토큰을 고르는 게 아니라 학습 후 고정된 위치를 항상 잘라내는 방식으로
   바꾸면 런타임 인덱싱 자체가 사라져(순수 `Slice`, 컴파일타임에 인덱스 확정)
-  어떤 NPU에서도 컴파일된다. EViT의 핵심 강점(이미지별 적응)은 잃지만, 이
-  시점에서는 사실상 유일하게 남은 실질적인 NPU 배포 경로로 보인다.
-- `_reduced.onnx`(Stage 1, channel pruning만)만 배포 — 확실히 되는 안전한 기본선
+  CPU offload도 필요 없이 NPU 온칩에서 그대로 돈다. EViT의 핵심 강점(이미지별
+  적응)은 잃지만, 실질적으로 가장 유력한 다음 경로로 보인다.
+- `_reduced.onnx`(Stage 1, channel pruning만)만 배포 — 확실히 되고 이미 컴파일
+  성공이 확인된 안전한 기본선
 
 **기존 파이프라인은 전혀 안 건드림 — 격리된 실험 경로로 추가:**
 
@@ -493,3 +524,7 @@ fine-tuning을 다 돌리기 전에, 실제 구현이 쓰는 정확한 op(§9.2 
 *업데이트: 2026-08 | §9.2 실측 결과 확정 — index_select(Gather)와 onehot_matmul*
 *(Equal+Cast+MatMul) 둘 다 런타임 인덱스 관련 op에서 실패. "Aries2가 데이터 의존적*
 *인덱싱을 지원 안 함"으로 결론, static/global token pruning 전환을 다음 단계로 제시*
+*업데이트: 2026-08 | §9.2 시도 4 추가 — matmul 벡터 shape 버그 수정 + cpu_offload=True*
+*명시적으로 켜고 재시도, 그러나 Equal(bool)→Cast 경계에서 동일 크래시 재현. 진단 정정:*
+*HL 컴파일은 매번 성공, 실패는 quantize 단계 CPU-offload 서브그래프 파싱의 qbcompiler*
+*버그(bool dtype 관련 추정)로 보이며, 고쳐져도 NPU↔CPU 왕복 오버헤드로 실익 낮을 전망*
