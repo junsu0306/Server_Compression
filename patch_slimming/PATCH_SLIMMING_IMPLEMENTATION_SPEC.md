@@ -1072,6 +1072,35 @@ loss = cross_entropy(logits, labels)
 
 # 14. NPU 배포 요구사항
 
+> ## 14.0 실측 결과 (2026-08, Mobilint Aries2 / qbcompiler) — ★필독★
+>
+> `patch_slimming/toy_rectangular_attention.py`로 최소 그래프를 만들어
+> qbcompiler에 넣어 두 가지를 실측 확인했다:
+>
+> 1. **rectangular attention (N_out × N_in): ✅ 지원됨.** MatMul(QKᵀ, attn@V)과
+>    Softmax가 전부 100% Supported로 컴파일됐다. §14.3의 Mode B(정사각형) 대안은
+>    **불필요**하다 — 논문 그대로 rectangular로 구현한다.
+>
+> 2. **토큰 선택을 ONNX `Gather`(= `torch.index_select`)로 하면 실패한다.**
+>    keep index가 **컴파일타임 상수**여도 Aries2는 activation을 흩어진 위치로
+>    gather하는 것을 지원하지 않는다(Unsupported → CPU offload → qbcompiler
+>    직렬화 버그 `map::at` 크래시). 아래 §14.2의 "constant integer gather 사용"
+>    지침은 **틀렸다** — 대신 아래 방법을 쓴다.
+>
+> 3. **해법 — 상수 선택행렬 MatMul (필수).** keep_ids가 상수이므로 "N_out개
+>    행 선택"을 상수 선택행렬 `P ∈ {0,1}^{N_out×N_in}` (`P[i, keep_ids[i]]=1`)의
+>    곱 `P @ x`로 표현한다. P가 컴파일타임 상수라 이건 weight가 상수인 MatMul
+>    (= Linear/Conv)일 뿐이며, Gather도 런타임 인덱스도 Equal/Cast도 없다.
+>    MatMul은 모든 실측에서 100% Supported였다.
+>    (EViT token pruning에서 이 방식이 막힌 건 onehot을 **런타임 topk 인덱스로부터
+>    Equal로** 만들어야 했기 때문 — Patch Slimming은 선택이 상수라 그 Equal이
+>    아예 없다. token_pruning_archive/TOKEN_PRUNING.md §9.2 참고.)
+>
+> **구현 지침**: §5.3/§12.2에서 `index_select`/"constant gather"로 적힌 토큰 선택은
+> 전부 **상수 선택행렬 matmul**로 구현한다. 학습(GPU) 단계는 index_select를 써도
+> 결과가 동일하므로 무방하나, NPU export 경로는 반드시 선택행렬 matmul(또는 그
+> 선택을 인접 Linear/Conv weight에 fuse)로 내보낸다.
+
 ## 14.1 우선 구현
 
 논문에 충실한 최종 attention은 rectangular attention이다.
@@ -1082,7 +1111,7 @@ K/V length = N_in
 attention  = N_out × N_in
 ```
 
-NPU backend가 이를 지원하는지 먼저 확인한다.
+→ **§14.0에서 Aries2 지원 확인 완료.** rectangular 그대로 구현한다.
 
 ## 14.2 최종 graph 원칙
 
@@ -1093,7 +1122,8 @@ NPU backend가 이를 지원하는지 먼저 확인한다.
 - runtime TopK 없음
 - runtime similarity 계산 없음
 - dynamic shape 없음
-- bool mask보다 constant integer gather 사용
+- ~~bool mask보다 constant integer gather 사용~~ → **§14.0 참고: Gather 대신
+  상수 선택행렬 MatMul을 쓴다** (상수 gather도 Aries2 미지원으로 실측됨)
 - Q와 KV projection을 분리
 
 ## 14.3 NPU가 rectangular attention을 지원하지 않을 때
