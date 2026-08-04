@@ -7,11 +7,17 @@ Patch Slimming NPU 사전 검증용 Toy 스크립트 — Rectangular Attention +
       (1) rectangular attention (N_out × N_in, 비정사각형)
       (2) "고정된(offline-search로 확정된) 토큰 집합"을 실제로 골라내는 연산
 
-실측으로 확인된 사실 (2026-08, token_pruning_archive/TOKEN_PRUNING.md 참고)
-    - rectangular attention: ✅ 컴파일됨. MatMul/Softmax 전부 100% Supported.
+실측 결과 (2026-08, Mobilint Aries2 / qbcompiler) — ✅ 컴파일 완주 확인
+    - select-mode matmul + NHWC 입력: 그래프 파싱 → HL 컴파일 → calibration →
+      quantize → .mxq 생성까지 전부 통과. (PATCH_SLIMMING_IMPLEMENTATION_SPEC.md
+      §14.0 참고)
+    - rectangular attention: ✅ MatMul/Softmax 전부 100% Supported.
     - ONNX `Gather`(index_select): ❌ keep_ids가 **상수**여도 Unsupported.
       Aries2는 activation을 흩어진 위치로 gather하는 것 자체를 안 받고, CPU
       offload로 빠지면서 qbcompiler의 서브그래프 직렬화 버그(map::at)로 크래시.
+      → 상수 선택행렬 matmul(P @ x)로 표현하면 통과.
+    - 입력은 NHWC [1,224,224,3] (calibration 이미지 레이아웃) — NCHW로 넣으면
+      calibration 단계에서 conv 채널 불일치로 실패.
 
 핵심 해법 — 상수 선택행렬 MatMul
     keep_ids가 컴파일타임 상수이므로, "흩어진 N_out개 행 선택"을

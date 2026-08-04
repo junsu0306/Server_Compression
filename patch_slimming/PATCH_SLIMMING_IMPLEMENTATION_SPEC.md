@@ -1072,10 +1072,13 @@ loss = cross_entropy(logits, labels)
 
 # 14. NPU 배포 요구사항
 
-> ## 14.0 실측 결과 (2026-08, Mobilint Aries2 / qbcompiler) — ★필독★
+> ## 14.0 실측 결과 (2026-08, Mobilint Aries2 / qbcompiler) — ★필독, 검증 완료★
 >
-> `patch_slimming/toy_rectangular_attention.py`로 최소 그래프를 만들어
-> qbcompiler에 넣어 두 가지를 실측 확인했다:
+> `patch_slimming/toy_rectangular_attention.py`로 최소 그래프(patch_embed +
+> rectangular attention 1개 블록 + 상수 토큰 선택)를 만들어 qbcompiler에 넣어
+> **컴파일 완주(.mxq 생성)를 확인했다.** Patch Slimming의 NPU 배포 경로가
+> 처음부터 끝까지(그래프 파싱 → HL 컴파일 → calibration → quantize → mxq)
+> 검증됐다. 핵심 결론:
 >
 > 1. **rectangular attention (N_out × N_in): ✅ 지원됨.** MatMul(QKᵀ, attn@V)과
 >    Softmax가 전부 100% Supported로 컴파일됐다. §14.3의 Mode B(정사각형) 대안은
@@ -1085,21 +1088,40 @@ loss = cross_entropy(logits, labels)
 >    keep index가 **컴파일타임 상수**여도 Aries2는 activation을 흩어진 위치로
 >    gather하는 것을 지원하지 않는다(Unsupported → CPU offload → qbcompiler
 >    직렬화 버그 `map::at` 크래시). 아래 §14.2의 "constant integer gather 사용"
->    지침은 **틀렸다** — 대신 아래 방법을 쓴다.
+>    지침은 **틀렸다** — 대신 아래 3번을 쓴다.
 >
-> 3. **해법 — 상수 선택행렬 MatMul (필수).** keep_ids가 상수이므로 "N_out개
->    행 선택"을 상수 선택행렬 `P ∈ {0,1}^{N_out×N_in}` (`P[i, keep_ids[i]]=1`)의
->    곱 `P @ x`로 표현한다. P가 컴파일타임 상수라 이건 weight가 상수인 MatMul
->    (= Linear/Conv)일 뿐이며, Gather도 런타임 인덱스도 Equal/Cast도 없다.
->    MatMul은 모든 실측에서 100% Supported였다.
+> 3. **해법 — 상수 선택행렬 MatMul (필수, ✅ 컴파일 성공 확인).** keep_ids가
+>    상수이므로 "N_out개 행 선택"을 상수 선택행렬 `P ∈ {0,1}^{N_out×N_in}`
+>    (`P[i, keep_ids[i]]=1`)의 곱 `P @ x`로 표현한다. P가 컴파일타임 상수라 이건
+>    weight가 상수인 MatMul(= Linear/Conv)일 뿐이며, Gather도 런타임 인덱스도
+>    Equal/Cast도 없다. 이 방식으로 바꾼 순간 `map::at` 크래시가 사라지고
+>    quantize까지 완주했다.
 >    (EViT token pruning에서 이 방식이 막힌 건 onehot을 **런타임 topk 인덱스로부터
 >    Equal로** 만들어야 했기 때문 — Patch Slimming은 선택이 상수라 그 Equal이
 >    아예 없다. token_pruning_archive/TOKEN_PRUNING.md §9.2 참고.)
 >
+> 4. **입력 레이아웃은 NHWC + calibration 데이터 정합 (배관 주의).** Mobilint
+>    calibration 파이프라인은 이미지를 **`[H,W,C]=[224,224,3]`(NHWC)** 로 넣고
+>    자동 transpose를 안 해준다. 모델 입력을 NCHW `[1,3,224,224]`로 export하면
+>    calibration 단계에서 conv 채널 불일치
+>    (`expected 3 channels but got 224`)로 실패한다. 그래서 toy는 입력을
+>    **NHWC `[1,224,224,3]`** 로 받아 내부에서 `permute(0,3,1,2)`로 NCHW 변환한
+>    뒤 patch_embed를 태운다 (시작 Transpose는 Aries2 100% Supported). 실제
+>    Patch Slimming 모델도 NPU export 시 이 규칙을 따르거나 compile 설정에서 입력
+>    transpose를 지정해야 한다.
+>
+> **실패 진행 기록 (한 겹씩 벗겨진 순서):**
+> | 시도 | 에러 | 성격 | 조치 |
+> |------|------|------|------|
+> | gather 방식 | `map::at` (GatherOptions) | op 미지원 | → 상수 선택행렬 matmul로 교체 |
+> | matmul + 토큰입력 | `reshape ... size 150528` | 배관(입력이 이미지 아님) | → patch_embed 추가, 이미지 입력 |
+> | matmul + NCHW | `conv expected 3 got 224` | 배관(NCHW/NHWC) | → NHWC 입력 + 내부 permute |
+> | matmul + NHWC | — | — | ✅ **컴파일 완주, .mxq 생성** |
+>
 > **구현 지침**: §5.3/§12.2에서 `index_select`/"constant gather"로 적힌 토큰 선택은
 > 전부 **상수 선택행렬 matmul**로 구현한다. 학습(GPU) 단계는 index_select를 써도
 > 결과가 동일하므로 무방하나, NPU export 경로는 반드시 선택행렬 matmul(또는 그
-> 선택을 인접 Linear/Conv weight에 fuse)로 내보낸다.
+> 선택을 인접 Linear/Conv weight에 fuse)로 내보내고, 입력은 NHWC로 맞춘다.
 
 ## 14.1 우선 구현
 

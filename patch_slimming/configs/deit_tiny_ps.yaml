@@ -1,0 +1,51 @@
+# Patch Slimming (정적 PS-ViT) — DeiT-Tiny 기준 설정
+# SPEC §15. 논문 미기재 값(num_samples/optimizer/lr/epsilon 등)은 모두 여기에 기록한다.
+#
+# 실행:
+#   python patch_slimming/run_search.py --config patch_slimming/configs/deit_tiny_ps.yaml --gpu 4
+
+method: patch_slimming_static
+
+model:
+  name: deit_tiny_patch16_224      # 비-distilled, 단일 CLS (SPEC §1.2)
+  num_classes: 1000
+
+data_path: /workspace/etri_iitp/JS/Server_Compression/data/imagenet
+output_dir: ./output/ps_deit_tiny
+
+# ── calibration subset (deterministic, SPEC §9.6/§7.7) ──────────────
+calibration:
+  num_samples: 2048
+  batch_size: 8                    # attention [B,H,N,N] 메모리 때문에 작게
+  seed: 2022
+  split: train
+  num_workers: 8
+
+# ── significance score (SPEC §7) ────────────────────────────────────
+score:
+  mode: paper_path_energy_dp       # path-energy DP (brute-force 검증됨, §7.6)
+
+# ── top-down search (SPEC §8) ───────────────────────────────────────
+search:
+  epsilon: 0.02                    # 논문 실험값 {0.01, 0.02} 중 (SPEC §2.4)
+  error_metric: mse                # acceptance 기본 (SPEC §9.4 [DECISION])
+  search_step: 10                  # r' granularity (SPEC §2.4)
+  max_search_iters: 10000
+  score_max_batches: null          # null=calib 전체 사용, 정수면 그만큼만(빠른 디버그)
+
+# ── block reconstruction fine-tuning (SPEC §9.5, 논문 미기재→[DECISION]) ──
+block_finetune:
+  optimizer: adamw
+  learning_rate: 1.0e-5
+  weight_decay: 0.0
+  epochs: 3                        # 후보 mask마다 (SPEC §2.4)
+  grad_clip_norm: 1.0
+
+# ── 최종 전체 fine-tuning (SPEC §13) ────────────────────────────────
+final_finetune:
+  epochs: 30
+  lr: 2.0e-5
+  weight_decay: 0.05
+  batch_size: 256
+  warmup_epochs: 3
+  num_workers: 8
