@@ -1,0 +1,35 @@
+experiment: structural_reduced_stage369
+data_path: /workspace/etri_iitp/JS/Server_Compression/data/imagenet
+wandb_project: vit-structural-patch-slimming
+boundaries_1based: [3, 6, 9]
+calibration:
+  num_samples: 1024
+  batch_size: 8
+  seed: 2022
+  split: train
+policies:
+  mild: [177, 157, 137]
+  medium: [157, 118, 79]
+  aggressive: [138, 89, 40]
+  extra_aggressive: [118, 69, 30]
+models:
+  - name: vit_tiny_30_final
+    reduced_checkpoint: output/vit_tiny_30_final/reduced.pt
+    output_dir: output/ps_structural/vit_tiny_30_final
+  - name: vit_tiny_50_final
+    reduced_checkpoint: output/vit_tiny_50_final/reduced.pt
+    output_dir: output/ps_structural/vit_tiny_50_final
+  - name: vit_small_30_final
+    reduced_checkpoint: output/vit_small_30_final/reduced.pt
+    output_dir: output/ps_structural/vit_small_30_final
+  - name: vit_small_50_final
+    reduced_checkpoint: output/vit_small_50_final/reduced.pt
+    output_dir: output/ps_structural/vit_small_50_final
+short_finetune:
+  epochs: 5
+  lr: 2.0e-5
+  weight_decay: 0.05
+final_finetune:
+  epochs: 30
+  lr: 2.0e-5
+  weight_decay: 0.05

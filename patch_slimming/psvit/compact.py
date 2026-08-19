@@ -30,7 +30,8 @@ class CompactPSViT(nn.Module):
     """timm ViT weight를 공유하며 layer별 고정 mask로 토큰을 실제 축소하는 compact 모델."""
 
     def __init__(self, model: nn.Module, keep_ids: List[Tensor],
-                 select_mode: str = "index_select", nhwc_input: bool = False):
+                 select_mode: str = "index_select", nhwc_input: bool = False,
+                 npu_static_batch_one: bool = False):
         super().__init__()
         validate_vit(model)
         self.model = model                       # patch_embed / _pos_embed / norm / head 재사용
@@ -38,6 +39,7 @@ class CompactPSViT(nn.Module):
         L = self.shp.num_blocks
         assert len(keep_ids) == L, "keep_ids 길이 = block 수"
         self.nhwc_input = nhwc_input
+        self.npu_static_batch_one = npu_static_batch_one
         self.select_mode = select_mode
 
         self.slim = nn.ModuleList(SlimBlock(model.blocks[l], select_mode) for l in range(L))
@@ -64,10 +66,31 @@ class CompactPSViT(nn.Module):
     def forward(self, images: Tensor) -> Tensor:
         if self.nhwc_input:
             images = images.permute(0, 3, 1, 2)          # [B,H,W,3] → [B,3,H,W]
-        x = embed_tokens(self.model, images)             # [B, N, D]
+        if self.npu_static_batch_one:
+            # NPU export is fixed to B=1. Avoid timm _pos_embed's dynamic CLS
+            # expansion (Equal/Where/Expand in ONNX) by concatenating [1,1,D]
+            # cls_token directly with the fixed-batch patch sequence.
+            x = self.model.patch_embed(images)
+            x = torch.cat((self.model.cls_token, x), dim=1)
+            x = self.model.pos_drop(x + self.model.pos_embed)
+            if hasattr(self.model, "patch_drop"):
+                x = self.model.patch_drop(x)
+            if hasattr(self.model, "norm_pre"):
+                x = self.model.norm_pre(x)
+        else:
+            x = embed_tokens(self.model, images)         # [B, N, D]
         for l, sb in enumerate(self.slim):
             out = sb(x, self._active(l).to(x.device), self._keep(l).to(x.device))
             x = out.x
+        if self.npu_static_batch_one:
+            # Final architecture output is CLS-only [1,1,D]. squeeze(1) exports
+            # as constant-axis Squeeze, unlike x[:, 0] which exports as Gather.
+            feat = self.model.norm(x).squeeze(1)
+            if hasattr(self.model, "fc_norm"):
+                feat = self.model.fc_norm(feat)
+            if hasattr(self.model, "head_drop"):
+                feat = self.model.head_drop(feat)
+            return self.model.head(feat)
         return head_from_tokens(self.model, x, cls_local_index=0)
 
     @torch.no_grad()

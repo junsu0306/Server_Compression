@@ -40,3 +40,7 @@ env/
 # ── OS ────────────────────────────────────────────────────────────────────────
 .DS_Store
 Thumbs.db
+# Local caches and temporary export files (keep large artifacts on workspace disk).
+.cache/
+.tmp/
+.deps/

@@ -10,7 +10,16 @@ import sys
 import runpy
 
 _TESTS = os.path.dirname(os.path.abspath(__file__))
-MODULES = ["test_ids", "test_slim_block", "test_instrument", "test_score_dp", "test_compact"]
+MODULES = [
+    "test_ids",
+    "test_slim_block",
+    "test_instrument",
+    "test_score_dp",
+    "test_reconstruct",
+    "test_search_state",
+    "test_compact",
+    "test_structural_stage",
+]
 
 
 def main():

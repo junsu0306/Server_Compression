@@ -13,6 +13,33 @@ import torch
 import torch.nn as nn
 
 
+def load_reduced_vit(path: str, device=None) -> tuple[nn.Module, dict]:
+    """Load a physically FFN-reduced checkpoint without re-expanding its MLPs."""
+    import timm
+    from pruning.vit_reducing import apply_reduced_config
+
+    ckpt = torch.load(path, map_location="cpu", weights_only=False)
+    required = {"model_name", "mlp_dims", "state_dict"}
+    missing = required.difference(ckpt)
+    if missing:
+        raise KeyError(f"reduced checkpoint missing keys: {sorted(missing)}")
+    model = timm.create_model(ckpt["model_name"], pretrained=False)
+    apply_reduced_config(model, ckpt["mlp_dims"])
+    model.load_state_dict(ckpt["state_dict"], strict=True)
+    if device is not None:
+        model = model.to(device)
+    return model, ckpt
+
+
+def apply_checkpoint_mlp_dims(model: nn.Module, checkpoint: dict) -> nn.Module:
+    """Restore optional reduced-FFN topology recorded by Patch Slimming."""
+    mlp_dims = checkpoint.get("mlp_dims")
+    if mlp_dims is not None:
+        from pruning.vit_reducing import apply_reduced_config
+        apply_reduced_config(model, mlp_dims)
+    return model
+
+
 @dataclass
 class ViTShape:
     num_blocks: int          # L

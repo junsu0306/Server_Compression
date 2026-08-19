@@ -64,6 +64,22 @@ def test_compact_output_shape_and_schedule():
     assert sched[0] == shp.num_global_tokens and sched[-1] == 1, sched   # 마지막은 CLS만
 
 
+def test_each_block_runtime_shape_matches_schedule():
+    """§16.10 — every block must physically emit the architecture's token count."""
+    model = _model()
+    shp = get_shape(model)
+    keep = _nested_keep(shp.num_global_tokens, shp.num_blocks)
+    compact = CompactPSViT(model, keep, select_mode="index_select").eval()
+    observed = []
+    hooks = [sb.register_forward_hook(lambda _m, _i, out: observed.append(out.x.shape[1]))
+             for sb in compact.slim]
+    with torch.no_grad():
+        compact(torch.randn(1, 3, 224, 224))
+    for hook in hooks:
+        hook.remove()
+    assert observed == compact.token_schedule()[1:], (observed, compact.token_schedule())
+
+
 def test_compact_nhwc_matches_nchw():
     model = _model()
     shp = get_shape(model)
@@ -75,6 +91,20 @@ def test_compact_nhwc_matches_nchw():
     with torch.no_grad():
         diff = (a(nchw) - b(nhwc)).abs().max().item()
     assert diff <= ATOL, f"NHWC≠NCHW diff={diff:.2e}"
+
+
+def test_npu_static_batch_one_matches_regular_forward():
+    model = _model()
+    shp = get_shape(model)
+    keep = _nested_keep(shp.num_global_tokens, shp.num_blocks)
+    nhwc = torch.randn(1, 224, 224, 3)
+    regular = CompactPSViT(model, keep, nhwc_input=True).eval()
+    static = CompactPSViT(
+        model, keep, nhwc_input=True, npu_static_batch_one=True
+    ).eval()
+    with torch.no_grad():
+        diff = (regular(nhwc) - static(nhwc)).abs().max().item()
+    assert diff <= ATOL, f"static B=1 export path differs: {diff:.2e}"
 
 
 if __name__ == "__main__":

@@ -59,7 +59,7 @@ Server_Compression/
 ├── export_onnx.py               ← Reduced(reduced.pt) → ONNX 변환 (Stage 1 전용, §9)
 ├── measure_memory.py            ← 아키텍처 분석 & 파라미터 프로파일링
 ├── patch_slimming/              ← 후속 방향: 정적 Patch Slimming (PS-ViT)
-│   ├── PATCH_SLIMMING_IMPLEMENTATION_SPEC.md
+│   ├── docs/IMPLEMENTATION_PLAN.md
 │   └── toy_rectangular_attention.py  ← NPU 사전검증 toy (rectangular attention)
 ├── token_pruning_archive/       ← EViT Token Pruning 실험 (아카이브 — NPU 배포 실패)
 │   ├── README.md

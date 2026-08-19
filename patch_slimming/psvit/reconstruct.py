@@ -92,6 +92,7 @@ def finetune_block_for_candidate(
     student.train()
     teacher.eval()
     last = {"loss": float("nan")}
+    loss_by_epoch = []
     for ep in range(epochs):
         loss_sum, n = 0.0, 0
         for batch in calib_loader:
@@ -107,8 +108,11 @@ def finetune_block_for_candidate(
             bs = images.shape[0]
             loss_sum += loss.item() * bs
             n += bs
-        last = {"loss": loss_sum / max(n, 1), "epoch": ep}
+        epoch_loss = loss_sum / max(n, 1)
+        loss_by_epoch.append(epoch_loss)
+        last = {"loss": epoch_loss, "epoch": ep}
     student.eval()
+    last["loss_by_epoch"] = loss_by_epoch
     return last
 
 
@@ -124,19 +128,26 @@ def evaluate_reconstruction(
     student.eval()
     teacher.eval()
 
-    se_sum, sq_sum, tgt_sq_sum, elem = 0.0, 0.0, 0.0, 0
+    se_sum, tgt_sq_sum, elem = 0.0, 0.0, 0
+    sample_relative = []
     for batch in calib_loader:
         images = (batch[0] if isinstance(batch, (list, tuple)) else batch).to(device, non_blocking=True)
         z_prev, target = teacher_features(teacher, images, t, next_keep_ids)
         pred = _student_prediction(student, t, z_prev, current_keep_ids, next_keep_ids, all_ids)
         diff = pred - target
         se_sum += diff.pow(2).sum().item()
-        sq_sum += diff.pow(2).sum().item()
         tgt_sq_sum += target.pow(2).sum().item()
         elem += diff.numel()
+        numerator = diff.flatten(1).pow(2).sum(dim=1)
+        denominator = target.flatten(1).pow(2).sum(dim=1).clamp_min(1e-12)
+        sample_relative.append((numerator / denominator).cpu())
     mse = se_sum / max(elem, 1)
+    rel = torch.cat(sample_relative) if sample_relative else torch.empty(0)
     return {
         "mse": mse,
-        "raw_frobenius_sq": sq_sum,
-        "relative_frobenius_sq": sq_sum / (tgt_sq_sum + 1e-12),
+        "raw_frobenius_sq": se_sum,
+        "relative_frobenius_sq": se_sum / (tgt_sq_sum + 1e-12),
+        "sample_relative_frobenius_sq_mean": float(rel.mean()) if rel.numel() else float("nan"),
+        "sample_relative_frobenius_sq_p50": float(rel.quantile(0.50)) if rel.numel() else float("nan"),
+        "sample_relative_frobenius_sq_p95": float(rel.quantile(0.95)) if rel.numel() else float("nan"),
     }

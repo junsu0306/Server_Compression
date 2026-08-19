@@ -2,7 +2,8 @@
 # SPEC §15. 논문 미기재 값(num_samples/optimizer/lr/epsilon 등)은 모두 여기에 기록한다.
 #
 # 실행:
-#   python patch_slimming/run_search.py --config patch_slimming/configs/deit_tiny_ps.yaml --gpu 4
+#   python patch_slimming/scripts/search.py \
+#     --config patch_slimming/configs/reference/deit_tiny_ps.yaml --gpu 4
 
 method: patch_slimming_static
 

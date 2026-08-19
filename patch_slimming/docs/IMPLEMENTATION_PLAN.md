@@ -1074,7 +1074,7 @@ loss = cross_entropy(logits, labels)
 
 > ## 14.0 실측 결과 (2026-08, Mobilint Aries2 / qbcompiler) — ★필독, 검증 완료★
 >
-> `patch_slimming/toy_rectangular_attention.py`로 최소 그래프(patch_embed +
+> `patch_slimming/scripts/toy_npu_validation.py`로 최소 그래프(patch_embed +
 > rectangular attention 1개 블록 + 상수 토큰 선택)를 만들어 qbcompiler에 넣어
 > **컴파일 완주(.mxq 생성)를 확인했다.** Patch Slimming의 NPU 배포 경로가
 > 처음부터 끝까지(그래프 파싱 → HL 컴파일 → calibration → quantize → mxq)

@@ -1,0 +1,68 @@
+project: vit-final-global-kd-l2-paper-20260814
+data_path: /workspace/etri_iitp/JS/Server_Compression/data/imagenet
+output_root: ./output/final_global_kd_l2_paper_20260814
+
+structural:
+  epochs: 50
+  lr: 5.0e-5
+  weight_decay: 0.05
+  clip_grad: 1.0
+  warmup_epochs: 5
+  min_lr: 1.0e-6
+  smoothing: 0.1
+  amp: true
+  num_workers: 8
+  model_ema: true
+  model_ema_decay: 0.9998
+  pruning_mode: global
+  pruning_importance: l2
+  pruning_max_sparsity: 0.95
+  prune_refresh_steps: 100
+  prune_warmup_epochs: 0
+  prune_ramp_epochs: 0
+  kd_alpha: 0.5
+  kd_temperature: 4.0
+
+patch_slimming:
+  epsilon: 0.02
+  error_metric: sample_relative_frobenius_sq_mean
+  search_step: 10
+  score_samples: 2048
+  reconstruction_train_samples: 4096
+  reconstruction_eval_samples: 2048
+  block_finetune_epochs: 3
+  final_finetune_epochs: 30
+
+models:
+  tiny30:
+    model: vit_tiny_patch16_224
+    teacher: vit_tiny_patch16_224
+    target_compression: 0.30
+    gpu: 6
+    structural_batch: 256
+    search_batch: 32
+    patch_finetune_batch: 384
+  tiny50:
+    model: vit_tiny_patch16_224
+    teacher: vit_tiny_patch16_224
+    target_compression: 0.50
+    gpu: 6
+    structural_batch: 256
+    search_batch: 32
+    patch_finetune_batch: 384
+  small30:
+    model: vit_small_patch16_224
+    teacher: vit_small_patch16_224
+    target_compression: 0.30
+    gpu: 7
+    structural_batch: 128
+    search_batch: 16
+    patch_finetune_batch: 192
+  small50:
+    model: vit_small_patch16_224
+    teacher: vit_small_patch16_224
+    target_compression: 0.50
+    gpu: 7
+    structural_batch: 128
+    search_batch: 16
+    patch_finetune_batch: 192

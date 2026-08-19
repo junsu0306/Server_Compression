@@ -2,7 +2,7 @@
 psvit — 정적 Patch Slimming (PS-ViT) 구현 패키지.
 
 레퍼런스: Tang et al., "Patch Slimming for Efficient Vision Transformers", CVPR 2022.
-구현 명세: patch_slimming/PATCH_SLIMMING_IMPLEMENTATION_SPEC.md (이하 SPEC).
+구현 명세: patch_slimming/docs/IMPLEMENTATION_PLAN.md (이하 SPEC).
 
 모듈 구성:
     ids.py          §3  global/local token ID, mask invariant

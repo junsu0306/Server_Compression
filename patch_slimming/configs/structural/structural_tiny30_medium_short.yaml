@@ -1,0 +1,17 @@
+method: patch_slimming_static_stage369
+model:
+  name: vit_tiny_patch16_224
+  num_classes: 1000
+  reduced_checkpoint: output/vit_tiny_30_final/reduced.pt
+data_path: /workspace/etri_iitp/JS/Server_Compression/data/imagenet
+output_dir: ./output/ps_structural/vit_tiny_30_final/medium
+final_finetune:
+  epochs: 1
+  lr: 2.0e-5
+  weight_decay: 0.05
+  batch_size: 256
+  warmup_epochs: 0
+  num_workers: 8
+  wandb: true
+  wandb_project: vit-structural-patch-slimming
+  wandb_run_name: vit_tiny_30_final-medium-recovery-1ep
