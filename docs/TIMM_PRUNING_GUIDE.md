@@ -138,7 +138,7 @@ head_dist                  Linear(768, 1000)  ← distillation head (별도)
 
 ### 3.3 메모리 프로파일링 구현
 
-아래 함수를 `measure_memory.py`로 만들어 실행하면 그룹별 파라미터 분포를 확인할 수 있다.
+아래 함수를 `scripts/profiling/measure_memory.py`로 만들어 실행하면 그룹별 파라미터 분포를 확인할 수 있다.
 
 ```python
 import torch
@@ -247,8 +247,8 @@ your_repo/
 │   ├── __init__.py
 │   ├── vit_pruning.py      ← Soft Pruning 핵심 (이 섹션에서 설명)
 │   └── vit_reducing.py     ← Reducing 핵심 (§5에서 설명)
-├── train.py                ← 훈련 진입점 (DeiT engine.py 수정 또는 직접 작성)
-└── reduce.py               ← Reducing CLI
+├── pruning/train.py                ← 훈련 진입점 (DeiT pruning/engine.py 수정 또는 직접 작성)
+└── pruning/reduce.py               ← Reducing CLI
 ```
 
 ### 4.2 핵심 수치 헬퍼
@@ -834,12 +834,12 @@ if args.wandb and wandb.run is not None:
 
 timm은 모델만 제공하므로 훈련 코드가 별도로 필요하다.  
 **DeiT 공식 훈련 스크립트** (`facebookresearch/deit`)가 timm 모델을 그대로 사용하며  
-`engine.py`의 `train_one_epoch` 함수 구조가 명확해 pruner 삽입이 용이하다.
+`pruning/engine.py`의 `train_one_epoch` 함수 구조가 명확해 pruner 삽입이 용이하다.
 
-### 8.2 DeiT engine.py 수정 (핵심 부분)
+### 8.2 DeiT pruning/engine.py 수정 (핵심 부분)
 
 ```python
-# engine.py — train_one_epoch 함수 내
+# pruning/engine.py — train_one_epoch 함수 내
 
 def train_one_epoch(model, criterion, data_loader, optimizer, device, epoch,
                     loss_scaler, max_norm=0, model_ema=None,
@@ -880,7 +880,7 @@ def train_one_epoch(model, criterion, data_loader, optimizer, device, epoch,
 ### 8.3 훈련 진입점 (main.py) 수정
 
 ```python
-# main.py 또는 train.py
+# main.py 또는 pruning/train.py
 
 # Soft Pruning 인자 추가
 parser.add_argument('--target-compression', type=float, default=0.0,
@@ -1123,7 +1123,7 @@ efficientvit2026/
 ├── applications/efficientvit_cls/
 │   ├── train_efficientvit_cls_model.py  ← 학습 진입점 (argparse + pruner 연동)
 │   ├── reduce_efficientvit_cls_model.py ← Reducing CLI
-│   └── measure_memory.py               ← 메모리 프로파일러
+│   └── measure_memory.py               ← EfficientViT 원본 메모리 프로파일러
 ├── PRUNING_IMPLEMENTATION_REPORT.md    ← EfficientViT 적용 상세 보고서
 └── PRUNING_METHODOLOGY.md              ← 방법론 원본 문서
 ```

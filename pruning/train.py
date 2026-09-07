@@ -2,7 +2,7 @@
 timm ViT / DeiT Soft Pruning Fine-tuning
 
 단일 GPU:
-    python train.py \\
+    python pruning/train.py \\
         --model vit_small_patch16_224 \\
         --data-path /data/imagenet \\
         --epochs 30 \\
@@ -12,7 +12,7 @@ timm ViT / DeiT Soft Pruning Fine-tuning
         --wandb
 
 멀티 GPU (DDP, torchrun):
-    torchrun --nproc_per_node=4 train.py \\
+    torchrun --nproc_per_node=4 pruning/train.py \\
         --model vit_base_patch16_224 \\
         --data-path /data/imagenet \\
         --epochs 30 \\
@@ -21,15 +21,20 @@ timm ViT / DeiT Soft Pruning Fine-tuning
         --output-dir ./output/vit_base_prune30
 
 체크포인트 재개:
-    python train.py ... --resume ./output/vit_small_prune20/checkpoint_last.pt
+    python pruning/train.py ... --resume ./output/vit_small_prune20/checkpoint_last.pt
 """
 
 from __future__ import annotations
 
 import os
 import argparse
+import sys
 import yaml
 from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
 import torch
 import torch.nn as nn
@@ -41,7 +46,7 @@ import timm.data
 from torchvision import datasets
 
 from pruning.vit_pruning import ViTPruner
-from engine import train_one_epoch, evaluate
+from pruning.engine import train_one_epoch, evaluate
 
 
 # ── argparse ───────────────────────────────────────────────────────────────────

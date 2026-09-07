@@ -8,21 +8,26 @@ TOKEN_PRUNING.md 참고).
 
 사용법:
     # --output 생략 시 체크포인트 메타데이터(모델명/압축률)로 자동 네이밍
-    python export_onnx.py --input ./output/vit_tiny_30_final/reduced.pt --verify
+    python scripts/export_onnx.py --input ./output/vit_tiny_30_final/reduced.pt --verify
     #   → ./output/vit_tiny_30_final/vit_tiny_c30_reduced.onnx
 
     # 경로 직접 지정
-    python export_onnx.py --input reduced.pt --output custom.onnx
+    python scripts/export_onnx.py --input reduced.pt --output custom.onnx
 
 변환 후 검증:
     pip install onnx onnxruntime
-    python export_onnx.py --input reduced.pt --verify
+    python scripts/export_onnx.py --input reduced.pt --verify
 """
 
 from __future__ import annotations
 
 import argparse
+import sys
 from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
 import torch
 import timm

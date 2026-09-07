@@ -51,13 +51,13 @@ Server_Compression/
 │   ├── vit_pruning.py           ← ViTPruner: Soft Pruning 컨트롤러 (channel, Stage 1)
 │   ├── vit_reducing.py          ← reduce_vit_model: Dense 변환 (Stage 1 → 완료 후)
 │   └── vit_flops.py             ← FLOPs / Activation Footprint 분석적 추정 (§5, §11)
-├── engine.py                    ← train_one_epoch / evaluate (Stage 1 + 아카이브 공용)
-├── train.py                     ← Stage 1 학습 진입점 (단일GPU / DDP, --config 지원)
-├── reduce.py                    ← Reducing CLI (Stage 1 완료 후)
-├── eval_baseline.py             ← Pruning 전 pretrained 모델 baseline 평가
-├── eval_reduced.py              ← Stage 1 Reduced 모델 val 평가 → WandB test 기록
-├── export_onnx.py               ← Reduced(reduced.pt) → ONNX 변환 (Stage 1 전용, §9)
-├── measure_memory.py            ← 아키텍처 분석 & 파라미터 프로파일링
+├── pruning/engine.py                    ← train_one_epoch / evaluate (Stage 1 + 아카이브 공용)
+├── pruning/train.py                     ← Stage 1 학습 진입점 (단일GPU / DDP, --config 지원)
+├── pruning/reduce.py                    ← Reducing CLI (Stage 1 완료 후)
+├── scripts/evaluation/eval_baseline.py             ← Pruning 전 pretrained 모델 baseline 평가
+├── scripts/evaluation/eval_reduced.py              ← Stage 1 Reduced 모델 val 평가 → WandB test 기록
+├── scripts/export_onnx.py               ← Reduced(reduced.pt) → ONNX 변환 (Stage 1 전용, §9)
+├── scripts/profiling/measure_memory.py            ← 아키텍처 분석 & 파라미터 프로파일링
 ├── patch_slimming/              ← 후속 방향: 정적 Patch Slimming (PS-ViT)
 │   ├── docs/IMPLEMENTATION_PLAN.md
 │   └── toy_rectangular_attention.py  ← NPU 사전검증 toy (rectangular attention)
@@ -66,7 +66,7 @@ Server_Compression/
 │   ├── TOKEN_PRUNING.md         ← Stage 2 상세 보고서 + NPU 실패 분석
 │   ├── token_pruning.py         ← EvitTokenPruner
 │   ├── token_pruning_npu.py     ← NPU 우회 실험 forward
-│   ├── train_token_pruning.py / eval_token_pruned.py / export_onnx.py
+│   ├── train_token_pruning.py / eval_token_pruned.py / scripts/export_onnx.py
 │   └── configs/*.yaml           ← token pruning 설정 5종
 ├── data/
 │   └── imagenet/                ← ImageNet (서버에만 존재, gitignore)
@@ -103,7 +103,7 @@ Server_Compression/
   fc2: (embed_dim, mlp_dim) → (embed_dim, n_survived)
 ```
 
-### 1 step 전체 학습 순서 (engine.py)
+### 1 step 전체 학습 순서 (pruning/engine.py)
 
 매 배치마다 아래 순서로 실행된다. 순서가 바뀌면 EMA가 pruning 이전 weight를 학습하거나 pruning이 무효화된다.
 
@@ -297,7 +297,7 @@ print('done')
 
 ## 4. 아키텍처 & 파라미터 분석
 
-> 분석 스크립트: `python measure_memory.py`
+> 분석 스크립트: `python scripts/profiling/measure_memory.py`
 
 ### 모델 기본 스펙
 
@@ -306,7 +306,7 @@ print('done')
 | ViT-Tiny  | 192 | 768   | 3  | 12 | **5,717,416** |
 | ViT-Small | 384 | 1,536 | 6  | 12 | **22,050,664** |
 
-### 파라미터 그룹 분류 (measure_memory.py 실측값)
+### 파라미터 그룹 분류 (scripts/profiling/measure_memory.py 실측값)
 
 **ViT-Tiny:**
 ```
@@ -486,7 +486,7 @@ mlp_dims = get_reduced_config(ema_model)
 
 ---
 
-### `train.py` — 학습 진입점
+### `pruning/train.py` — 학습 진입점
 
 주요 인자:
 
@@ -517,14 +517,14 @@ mlp_dims = get_reduced_config(ema_model)
 
 ---
 
-### `eval_reduced.py` — Reduced 모델 평가
+### `scripts/evaluation/eval_reduced.py` — Reduced 모델 평가
 
-`reduce.py`로 생성한 `reduced.pt`를 ImageNet val로 평가하고 WandB에 `test/*` 지표 기록.
+`pruning/reduce.py`로 생성한 `reduced.pt`를 ImageNet val로 평가하고 WandB에 `test/*` 지표 기록.
 `--gpu`는 상대 인덱스라 특정 GPU 하나만 쓰고 싶으면 `CUDA_VISIBLE_DEVICES` 없이
 `--gpu <N>`만 지정하면 된다 (DDP 아님, 단일 프로세스 평가).
 
 ```bash
-python eval_reduced.py \
+python scripts/evaluation/eval_reduced.py \
   --reduced   ./output/vit_tiny_30_final/reduced.pt \
   --data-path /workspace/etri_iitp/JS/Server_Compression/data/imagenet \
   --gpu 4 \
@@ -543,7 +543,7 @@ params뿐 아니라 실제 연산량/메모리 절감이 얼마나 되는지 bas
 Params 압축률만으로는 실제 연산량(FLOPs)이나 추론 시 메모리(activation footprint)가
 얼마나 줄었는지 알 수 없다 — channel pruning이 FFN만 건드리고 attention(QKV/proj,
 §4의 G_QKV+G_PROJ ≈ 31%)은 그대로 두기 때문에, params 절감률과 FLOPs/activation
-절감률이 서로 다르게 나온다. 이걸 `eval_reduced.py`에서 baseline(원본 구조) vs
+절감률이 서로 다르게 나온다. 이걸 `scripts/evaluation/eval_reduced.py`에서 baseline(원본 구조) vs
 reduced(block별 non-uniform mlp_dim)로 비교해서 WandB에 시각화한다.
 
 ```python
@@ -593,11 +593,11 @@ softmax / attn@V FLOPs를 분해해서 잡을 수 없다. 이미 알고 있는 �
 
 ```bash
 # ViT-Tiny (GPU 6,7)
-CUDA_VISIBLE_DEVICES=6,7 torchrun --nproc_per_node=2 train.py \
+CUDA_VISIBLE_DEVICES=6,7 torchrun --nproc_per_node=2 pruning/train.py \
   --config configs/vit_tiny_prune50_progressive.yaml
 
 # ViT-Small (GPU 4,5)
-CUDA_VISIBLE_DEVICES=4,5 torchrun --nproc_per_node=2 train.py \
+CUDA_VISIBLE_DEVICES=4,5 torchrun --nproc_per_node=2 pruning/train.py \
   --config configs/vit_small_prune50_progressive.yaml
 ```
 
@@ -609,11 +609,11 @@ output: `./output/vit_{tiny,small}_prune50_progressive_taylor/`
 
 ```bash
 # ViT-Tiny 50%
-CUDA_VISIBLE_DEVICES=6,7 torchrun --nproc_per_node=2 train.py \
+CUDA_VISIBLE_DEVICES=6,7 torchrun --nproc_per_node=2 pruning/train.py \
   --config configs/vit_tiny_prune50.yaml
 
 # ViT-Small 50%
-CUDA_VISIBLE_DEVICES=4,5 torchrun --nproc_per_node=2 train.py \
+CUDA_VISIBLE_DEVICES=4,5 torchrun --nproc_per_node=2 pruning/train.py \
   --config configs/vit_small_prune50.yaml
 ```
 
@@ -622,7 +622,7 @@ CUDA_VISIBLE_DEVICES=4,5 torchrun --nproc_per_node=2 train.py \
 ### 학습 재개
 
 ```bash
-CUDA_VISIBLE_DEVICES=6,7 torchrun --nproc_per_node=2 train.py \
+CUDA_VISIBLE_DEVICES=6,7 torchrun --nproc_per_node=2 pruning/train.py \
   --config configs/vit_tiny_prune50_progressive.yaml \
   --resume ./output/vit_tiny_prune50_progressive_taylor/checkpoint_last.pt
 ```
@@ -632,7 +632,7 @@ CUDA_VISIBLE_DEVICES=6,7 torchrun --nproc_per_node=2 train.py \
 ## 7. Baseline Evaluation
 
 ```bash
-CUDA_VISIBLE_DEVICES=4,5,6,7 torchrun --nproc_per_node=4 eval_baseline.py \
+CUDA_VISIBLE_DEVICES=4,5,6,7 torchrun --nproc_per_node=4 scripts/evaluation/eval_baseline.py \
   --data-path /workspace/etri_iitp/JS/Server_Compression/data/imagenet \
   --batch-size 256 \
   --wandb
@@ -653,13 +653,13 @@ CUDA_VISIBLE_DEVICES=4,5,6,7 torchrun --nproc_per_node=4 eval_baseline.py \
 
 ```bash
 # ViT-Tiny
-python reduce.py \
+python pruning/reduce.py \
   --model vit_tiny_patch16_224 \
   --checkpoint ./output/vit_tiny_prune50_progressive_taylor/checkpoint_best.pt \
   --output     ./output/vit_tiny_prune50_progressive_taylor/reduced.pt
 
 # ViT-Small
-python reduce.py \
+python pruning/reduce.py \
   --model vit_small_patch16_224 \
   --checkpoint ./output/vit_small_prune50_progressive_taylor/checkpoint_best.pt \
   --output     ./output/vit_small_prune50_progressive_taylor/reduced.pt
@@ -681,7 +681,7 @@ AFTER:  2,862,256 params  (49.94% removed)
 
 ## 9. ONNX 변환
 
-> **주의**: `export_onnx.py`는 이제 **Stage 1(reduced.pt) 전용**이다. 예전에
+> **주의**: `scripts/export_onnx.py`는 이제 **Stage 1(reduced.pt) 전용**이다. 예전에
 > 인자가 `--reduced` → `--input`으로 바뀌었고, Stage 2(token_pruned) 변환과
 > `--npu-safe`/`--npu-mode` 옵션은 [token_pruning_archive/export_onnx.py](token_pruning_archive/export_onnx.py)로
 > 분리했다 (NPU 실패로 아카이브됨 —
@@ -694,7 +694,7 @@ AFTER:  2,862,256 params  (49.94% removed)
 
 ```bash
 # --output 생략 → 자동 네이밍
-python export_onnx.py --input ./output/vit_tiny_30_final/reduced.pt --verify
+python scripts/export_onnx.py --input ./output/vit_tiny_30_final/reduced.pt --verify
 #   → ./output/vit_tiny_30_final/vit_tiny_c30_reduced.onnx
 ```
 
@@ -745,7 +745,7 @@ model.eval()
 - epoch 25부터 `current_sparsity ≈ target_sparsity` 로 고정되는지 확인
 - val/top1이 epoch 0~4 구간에서 상대적으로 안정적인지 확인 (warmup 효과)
 
-### `eval_reduced.py` 전용 (test/* + FLOPs/Activation, §5)
+### `scripts/evaluation/eval_reduced.py` 전용 (test/* + FLOPs/Activation, §5)
 
 | 키 | 내용 |
 |----|------|
@@ -863,7 +863,7 @@ tensor *= mask           # ✗ autograd에 연산 추가 → optimizer.step() �
 # 잘못된 방법
 mean=IMAGENET_DEFAULT_MEAN  # (0.485, 0.456, 0.406)
 
-# 올바른 방법 (train.py, eval_baseline.py 모두 적용됨)
+# 올바른 방법 (pruning/train.py, scripts/evaluation/eval_baseline.py 모두 적용됨)
 data_config = timm.data.resolve_model_data_config(model)
 transform = timm.data.create_transform(**data_config, is_training=False)
 ```
@@ -871,7 +871,7 @@ transform = timm.data.create_transform(**data_config, is_training=False)
 ### ❷ DDP 환경에서 pruner.apply()
 
 ```python
-# engine.py에서 처리됨
+# pruning/engine.py에서 처리됨
 actual = model.module if hasattr(model, "module") else model
 pruner.apply(actual)   # 반드시 .module 전달
 ```
@@ -918,15 +918,15 @@ print(ckpt.keys())
 ### ❼ 아키텍처 분석 재실행
 
 ```bash
-python measure_memory.py
+python scripts/profiling/measure_memory.py
 ```
 
 ### ❽ `checkpoint_best.pt`가 pruning 적용 전(warmup 구간) epoch에서 저장되는 문제 ★중요★
 
-**증상**: `reduce.py`를 `checkpoint_best.pt`로 돌렸는데 `removed 0 params (0.00% removed)`가
+**증상**: `pruning/reduce.py`를 `checkpoint_best.pt`로 돌렸는데 `removed 0 params (0.00% removed)`가
 나오거나, 압축률이 목표치보다 훨씬 낮게 나옴.
 
-**원인**: `train.py`의 `is_best` 판정이 pruning 진행 상태와 무관하게 순수 `val_top1`
+**원인**: `pruning/train.py`의 `is_best` 판정이 pruning 진행 상태와 무관하게 순수 `val_top1`
 최고값만 본다. Progressive pruning은 `prune_warmup_epochs` 구간(예: epoch 0~4)에는
 sparsity=0(=pruning 전, 원본 정확도)이라 이 구간의 val_top1이 이후 pruning이 걸린
 epoch들보다 높게 나오기 쉽다. 그 경우 `checkpoint_best.pt`는 **pruning이 거의 안
@@ -943,15 +943,15 @@ print(f"best epoch={ckpt['epoch']}  ramp_end={warmup+ramp}  "
 ```
 
 **즉시 대안**: 이미 완료된 run이면 `checkpoint_last.pt`(마지막 epoch, sparsity=target
-유지 구간)로 `reduce.py`를 돌린다. 최고 정확도 지점은 아니지만 최소한 목표
+유지 구간)로 `pruning/reduce.py`를 돌린다. 최고 정확도 지점은 아니지만 최소한 목표
 압축률은 반영된 결과를 얻는다.
 
-**근본 수정 (권장, 아직 `train.py`에는 미반영)**: `is_best` 판정을 `epoch >=
+**근본 수정 (권장, 아직 `pruning/train.py`에는 미반영)**: `is_best` 판정을 `epoch >=
 prune_warmup_epochs + prune_ramp_epochs`(=target sparsity 도달 이후) 조건으로
 gate해야 한다. 아카이브된 `train_token_pruning.py`(Stage 2)에는 이미 이 수정이
 적용돼 있다
 ([token_pruning_archive/TOKEN_PRUNING.md §4.1](token_pruning_archive/TOKEN_PRUNING.md#41-is_best-판정--stage-1과-동일한-함정을-stage-2에서도-발견))
-— 동일한 패턴을 `train.py`에도 적용할 수 있다.
+— 동일한 패턴을 `pruning/train.py`에도 적용할 수 있다.
 
 ---
 
@@ -960,5 +960,5 @@ gate해야 한다. 아카이브된 `train_token_pruning.py`(Stage 2)에는 이�
 *`checkpoint_best.pt`가 pruning 적용 전 epoch에서 저장되는 문제 발견 및 수정(§13-❽)*
 *업데이트: 2026-08 | Stage 2(EViT Token Pruning) 관련 코드·설정·문서 전부*
 *[token_pruning_archive/](token_pruning_archive/)로 이동(NPU 배포 실패로 아카이브),*
-*export_onnx.py는 Stage 1 전용으로 축소. 후속 방향은 정적 Patch Slimming*
+*scripts/export_onnx.py는 Stage 1 전용으로 축소. 후속 방향은 정적 Patch Slimming*
 *([patch_slimming/](patch_slimming/), rectangular attention NPU toy 검증 추가)*

@@ -1,7 +1,7 @@
 # ViT / DeiT 아키텍처 분석 보고서
 
 > timm 1.0.27, torch 2.9.1 기준  
-> `measure_memory.py` 실행 결과를 바탕으로 작성 (2026-06)
+> `scripts/profiling/measure_memory.py` 실행 결과를 바탕으로 작성 (2026-06)
 
 ---
 

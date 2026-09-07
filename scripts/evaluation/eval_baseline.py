@@ -2,17 +2,17 @@
 Pruning 전 사전학습 모델 baseline evaluation → WandB 기록
 
 단일 GPU:
-    python eval_baseline.py \\
+    python scripts/evaluation/eval_baseline.py \\
         --data-path /workspace/etri_iitp/JS/Server_Compression/data/imagenet \\
         --wandb
 
 멀티 GPU (DDP):
-    CUDA_VISIBLE_DEVICES=4,5,6,7 torchrun --nproc_per_node=4 eval_baseline.py \\
+    CUDA_VISIBLE_DEVICES=4,5,6,7 torchrun --nproc_per_node=4 scripts/evaluation/eval_baseline.py \\
         --data-path /workspace/etri_iitp/JS/Server_Compression/data/imagenet \\
         --wandb
 
 특정 모델만:
-    python eval_baseline.py \\
+    python scripts/evaluation/eval_baseline.py \\
         --model vit_small_patch16_224 \\
         --data-path /workspace/etri_iitp/JS/Server_Compression/data/imagenet \\
         --wandb
@@ -22,6 +22,13 @@ from __future__ import annotations
 
 import os
 import argparse
+import sys
+from pathlib import Path
+
+# 직접 파일로 실행해도 저장소 루트의 pruning/engine 모듈을 찾을 수 있게 한다.
+ROOT = Path(__file__).resolve().parents[2]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
 import torch
 import torch.distributed as dist
@@ -30,7 +37,7 @@ import timm.data
 from torch.utils.data import DataLoader, DistributedSampler
 from torchvision import datasets
 
-from engine import evaluate
+from pruning.engine import evaluate
 
 # 평가 대상 모델 (--model 미지정 시 순서대로 실행)
 BASELINE_MODELS = [

@@ -2,7 +2,7 @@
 Reduced 모델 (reduced.pt) → ImageNet val 평가 → WandB 기록
 
 사용법:
-    python eval_reduced.py \\
+    python scripts/evaluation/eval_reduced.py \\
         --reduced  ./output/vit_tiny_prune50_global/reduced.pt \\
         --data-path /workspace/etri_iitp/JS/Server_Compression/data/imagenet \\
         --wandb
@@ -12,6 +12,13 @@ from __future__ import annotations
 
 import argparse
 import os
+import sys
+from pathlib import Path
+
+# 직접 파일로 실행해도 저장소 루트의 pruning/engine 모듈을 찾을 수 있게 한다.
+ROOT = Path(__file__).resolve().parents[2]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
 import torch
 import timm
@@ -20,7 +27,7 @@ from torchvision import datasets
 
 from pruning.vit_reducing import apply_reduced_config
 from pruning.vit_flops import analyze_vit_compute, compute_reduction, format_flops, format_bytes
-from engine import evaluate
+from pruning.engine import evaluate
 
 
 def get_args() -> argparse.Namespace:

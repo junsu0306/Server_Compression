@@ -3,7 +3,7 @@ ViT FLOPs / Activation Footprint 분석적(analytical) 추정.
 
 목적: reduced 모델(§8, channel pruning으로 block별 mlp_dim이 non-uniform하게
 줄어든 Dense 모델)이 baseline(원본 pretrained) 대비 연산량/활성화 메모리가
-얼마나 줄었는지 eval_reduced.py에서 WandB로 시각화하기 위함.
+얼마나 줄었는지 scripts/evaluation/eval_reduced.py에서 WandB로 시각화하기 위함.
 
 측정이 아니라 "구조로부터 계산"이다 — hook으로 실제 forward를 프로파일링하는
 대신, ViT block 구조(embed_dim, num_heads, mlp_dim, 토큰 개수)로부터 표준

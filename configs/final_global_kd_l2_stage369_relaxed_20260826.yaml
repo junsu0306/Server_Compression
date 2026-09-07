@@ -1,0 +1,40 @@
+project: vit-final-global-kd-l2-stage369-relaxed-20260826
+data_path: /workspace/etri_iitp/JS/Server_Compression/data/imagenet
+output_root: ./output/final_global_kd_l2_stage369_relaxed_20260826
+
+stage369:
+  counts: [171, 151, 131]
+  calibration_samples: 2048
+  calibration_batch_size: 16
+  validation_batch_size_tiny: 256
+  validation_batch_size_small: 128
+  workers: 8
+
+final_finetune:
+  epochs: 30
+  lr: 2.0e-5
+  weight_decay: 0.05
+  warmup_epochs: 3
+  workers: 8
+
+models:
+  tiny30:
+    model: vit_tiny_patch16_224
+    reduced_checkpoint: ./output/final_global_kd_l2_paper_20260814/tiny30/02_reduced/reduced.pt
+    gpu: 6
+    batch_size: 384
+  tiny50:
+    model: vit_tiny_patch16_224
+    reduced_checkpoint: ./output/final_global_kd_l2_paper_20260814/tiny50/02_reduced/reduced.pt
+    gpu: 6
+    batch_size: 384
+  small30:
+    model: vit_small_patch16_224
+    reduced_checkpoint: ./output/final_global_kd_l2_paper_20260814/small30/02_reduced/reduced.pt
+    gpu: 7
+    batch_size: 192
+  small50:
+    model: vit_small_patch16_224
+    reduced_checkpoint: ./output/final_global_kd_l2_paper_20260814/small50/02_reduced/reduced.pt
+    gpu: 7
+    batch_size: 192

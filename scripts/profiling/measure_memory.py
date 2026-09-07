@@ -6,6 +6,13 @@ timm ViT 아키텍처 분석 & 메모리 프로파일링
 """
 
 import re
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[2]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
 import torch
 import torch.nn as nn
 import timm

@@ -2,7 +2,7 @@
 Soft Pruning 완료 체크포인트 → Dense 모델 생성 CLI
 
 사용법:
-    python reduce.py \\
+    python pruning/reduce.py \\
         --model vit_small_patch16_224 \\
         --checkpoint ./output/vit_small_prune20/checkpoint_best.pt \\
         --output     ./output/vit_small_prune20/reduced.pt
@@ -21,6 +21,13 @@ reduced.pt 로드 방법:
 from __future__ import annotations
 
 import argparse
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
 import torch
 import timm
 from pruning.vit_reducing import (

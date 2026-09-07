@@ -40,7 +40,7 @@ from torchvision import datasets
 from psvit.architecture import ArchitectureSpec
 from psvit.compact import CompactPSViT
 from psvit.model_utils import apply_checkpoint_mlp_dims
-from engine import train_one_epoch, evaluate
+from pruning.engine import train_one_epoch, evaluate
 
 
 def setup_ddp(args):

@@ -1,7 +1,7 @@
 # ViT-Small  |  30% channel pruning 기반  |  Stage 2 — EViT Token Pruning (keep_rate=0.7)
 #
-# 전제: Stage 1(soft channel pruning) → reduce.py 완료 후 reduced.pt 필요
-#   python reduce.py --model vit_small_patch16_224 \
+# 전제: Stage 1(soft channel pruning) → pruning/reduce.py 완료 후 reduced.pt 필요
+#   python pruning/reduce.py --model vit_small_patch16_224 \
 #     --checkpoint ./output/vit_small_30_final/checkpoint_last.pt \
 #     --output     ./output/vit_small_30_final/reduced.pt
 #

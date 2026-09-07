@@ -1,7 +1,7 @@
 # ViT-Tiny  |  30% compression  |  GPU 6,7 (11GB × 2)
 #
 # 실행:
-#   CUDA_VISIBLE_DEVICES=6,7 torchrun --nproc_per_node=2 train.py \
+#   CUDA_VISIBLE_DEVICES=6,7 torchrun --nproc_per_node=2 pruning/train.py \
 #     --config configs/vit_tiny_prune30.yaml
 
 model: vit_tiny_patch16_224

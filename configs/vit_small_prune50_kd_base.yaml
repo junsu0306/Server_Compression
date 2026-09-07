@@ -1,7 +1,7 @@
 # ViT-Small  |  50% compression  |  Teacher: vit_base_patch16_224
 #
 # 실행 (GPU 4,5):
-#   CUDA_VISIBLE_DEVICES=4,5 torchrun --nproc_per_node=2 train.py \
+#   CUDA_VISIBLE_DEVICES=4,5 torchrun --nproc_per_node=2 pruning/train.py \
 #     --config configs/vit_small_prune50_kd_base.yaml
 #
 # 주의: normalization 불일치 경고가 뜨면 vit_base_patch16_224.augreg_in1k 사용

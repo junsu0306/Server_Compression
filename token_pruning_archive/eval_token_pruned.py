@@ -26,7 +26,7 @@ from torchvision import datasets
 
 from pruning.vit_reducing import apply_reduced_config
 from token_pruning import apply_token_pruning       # 같은 아카이브 폴더의 sibling 모듈
-from engine import evaluate
+from pruning.engine import evaluate
 
 
 def get_args() -> argparse.Namespace:

@@ -37,7 +37,7 @@ from torchvision import datasets
 from psvit.architecture import ArchitectureSpec
 from psvit.compact import CompactPSViT
 from psvit.model_utils import get_shape, apply_checkpoint_mlp_dims
-from engine import evaluate
+from pruning.engine import evaluate
 
 
 def build_val_loader(model_name, data_path, batch_size, num_workers=8):

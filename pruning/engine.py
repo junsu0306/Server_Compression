@@ -1,7 +1,7 @@
 """
 한 epoch 단위 학습/검증 루프.
 
-train.py 에서 import 해서 사용한다.
+pruning/train.py와 Patch Slimming 학습·평가 스크립트에서 공용으로 사용한다.
 """
 
 from __future__ import annotations

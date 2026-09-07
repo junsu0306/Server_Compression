@@ -19,9 +19,9 @@ import yaml
 
 
 ROOT = Path(__file__).resolve().parents[1]
-TRAIN = ROOT / "train.py"
-REDUCE = ROOT / "reduce.py"
-EVAL_REDUCED = ROOT / "eval_reduced.py"
+TRAIN = ROOT / "pruning/train.py"
+REDUCE = ROOT / "pruning/reduce.py"
+EVAL_REDUCED = ROOT / "scripts/evaluation/eval_reduced.py"
 PS_SEARCH = ROOT / "patch_slimming/scripts/search.py"
 PS_FINETUNE = ROOT / "patch_slimming/scripts/finetune.py"
 EXPORT_ONNX = ROOT / "scripts/export_final_onnx.py"

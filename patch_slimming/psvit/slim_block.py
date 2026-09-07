@@ -65,6 +65,16 @@ def select_rows(x: Tensor, out_local: Tensor, mode: str, sel_mat: Optional[Tenso
     if mode == "index_select":
         return x.index_select(1, out_local.to(x.device))
     if mode == "matmul":
+        # NPU production graph: do not introduce a quantization boundary for
+        # an exact identity selection.  A CLS-only selection is a static Slice,
+        # which qbcompiler supports and computes without a one-hot MatMul.
+        local = out_local.to(x.device)
+        if local.numel() == x.shape[1] and torch.equal(
+            local, torch.arange(x.shape[1], device=x.device, dtype=local.dtype)
+        ):
+            return x
+        if local.numel() == 1 and int(local[0]) == 0:
+            return x[:, :1, :]
         P = sel_mat if sel_mat is not None else selection_matrix(out_local, x.shape[1], x.device, x.dtype)
         return torch.matmul(P, x)          # [N_out,N_in] @ [B,N_in,D] → [B,N_out,D]
     raise ValueError(f"select mode: {mode!r}")

@@ -27,7 +27,7 @@
 | `token_pruning_npu.py` | NPU 우회 실험 forward 변형 (index_select / onehot_matmul) |
 | `train_token_pruning.py` | Stage 2 학습 진입점 (reduced.pt 입력) |
 | `eval_token_pruned.py` | token pruned 모델 평가 |
-| `export_onnx.py` | token pruned 모델 → ONNX (루트 export_onnx.py에서 분리) |
+| `export_onnx.py` | token pruned 모델 → ONNX (`scripts/export_onnx.py`에서 분리) |
 | `configs/*.yaml` | 학습 설정 5종 |
 
 ## 실행 (repo 루트에서)
@@ -53,7 +53,7 @@ python token_pruning_archive/export_onnx.py \
 
 ## 루트에서 바뀐 것
 
-- 루트 `export_onnx.py`는 이제 **Stage 1(reduced.pt) 전용**이다. token pruning
+- `scripts/export_onnx.py`는 **Stage 1(reduced.pt) 전용**이다. token pruning
   관련 인자(`--npu-safe`/`--npu-mode`)와 로직은 이 폴더의 `export_onnx.py`로 옮겼다.
 - `pruning/` 패키지에서 `token_pruning.py`, `token_pruning_npu.py`가 빠졌다
   (활성 파이프라인은 `vit_pruning.py`/`vit_reducing.py`/`vit_flops.py`만 사용).

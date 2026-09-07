@@ -11,7 +11,7 @@
 
 > **이 문서는 Stage 2(token pruning, sequence 차원 압축)만 다룬다.**
 > Stage 1(channel pruning, FFN width 압축) · 환경 설정 · 아키텍처 분석 ·
-> `train.py`/`reduce.py` 등은 [IMPLEMENTATION.md](IMPLEMENTATION.md)를 참고할 것.
+> `pruning/train.py`/`pruning/reduce.py` 등은 [IMPLEMENTATION.md](IMPLEMENTATION.md)를 참고할 것.
 > Stage 2는 Stage 1이 끝난 `reduced.pt`를 입력으로 받는 후속 단계다.
 
 > **구현 파일**: `pruning/token_pruning.py`(핵심 알고리즘), `pruning/token_pruning_npu.py`
@@ -72,10 +72,10 @@ O(N²) 대비 무시할 수준이다.
 ## 2. 파이프라인 순서 — 왜 reduced 모델을 대상으로 하는가
 
 ```
-[Stage 1] Soft channel pruning + KD (IMPLEMENTATION.md 참고, train.py)
+[Stage 1] Soft channel pruning + KD (IMPLEMENTATION.md 참고, pruning/train.py)
     → checkpoint_best.pt
 
-[Reduce] reduce.py
+[Reduce] pruning/reduce.py
     → reduced.pt   (FFN이 물리적으로 축소된 순수 Dense 모델)
 
 [Stage 2] EViT Token Pruning fine-tuning (train_token_pruning.py)
@@ -90,7 +90,7 @@ O(N²) 대비 무시할 수준이다.
   (IMPLEMENTATION.md §13-❹), Taylor EMA로 겨우 안정화했다. 여기에 토큰 단위
   동적 변화까지 같은 루프에서 동시에 켜면 val/top1 하락의 원인이 sparsity
   스케줄 때문인지 keep_rate 스케줄 때문인지 구분할 수 없다.
-- `reduce.py` 완료 후 결과물은 이미 검증된 안정적인 Dense 모델이다. EViT 원
+- `pruning/reduce.py` 완료 후 결과물은 이미 검증된 안정적인 Dense 모델이다. EViT 원
   논문도 잘 학습된 dense backbone 위에 token pruning을 얹어 짧게 fine-tuning하는
   방식을 쓴다 — 여기서는 그 backbone 자리에 "channel-pruned dense 모델"을
   놓은 것뿐이다.
@@ -168,7 +168,7 @@ else:
 (=`keep_rate_warmup_epochs` 직후, keep_rate가 아직 1.0에 가까운 시점)에서
 73.6%로 찍힌 뒤 나머지 26 epoch 내내 한 번도 안 움직였다 — IMPLEMENTATION.md
 §13-❽에서 발견한 channel pruning의 `checkpoint_best.pt` 함정이 token pruning에도
-그대로 재현된 것이다. `train_token_pruning.py`도 원래는 `train.py`와 동일하게
+그대로 재현된 것이다. `train_token_pruning.py`도 원래는 `pruning/train.py`와 동일하게
 "keep_rate 상태 무관하게 그냥 val_top1 최고값"만 봤기 때문이다.
 
 **수정** (`train_token_pruning.py` 학습 루프):
@@ -230,13 +230,13 @@ KD로 정확도 회복을 돕는다. `--kd-teacher-mode`로 두 가지를 지원
 
 ## 6. WandB 프로젝트 분리
 
-Stage 1(channel pruning, `train.py`/`eval_reduced.py`)과 Stage 2(token pruning)는
+Stage 1(channel pruning, `pruning/train.py`/`scripts/evaluation/eval_reduced.py`)과 Stage 2(token pruning)는
 서로 다른 WandB 프로젝트를 쓴다 — 압축 축이 달라서 같은 프로젝트에 섞으면 비교가
 헷갈리기 때문:
 
 | 스크립트 | 기본 `--wandb-project` |
 |----------|------------------------|
-| `train.py`, `eval_reduced.py` (Stage 1) | `vit-pruning` |
+| `pruning/train.py`, `scripts/evaluation/eval_reduced.py` (Stage 1) | `vit-pruning` |
 | `train_token_pruning.py`, `eval_token_pruned.py` (Stage 2) | `vit-token-pruning` |
 
 `configs/*_token_prune70.yaml` 4개 모두 `wandb_project: vit-token-pruning`이 이미
@@ -253,7 +253,7 @@ Stage 1(channel pruning, `train.py`/`eval_reduced.py`)과 Stage 2(token pruning)
 ```bash
 # Stage 1 → Reduce (checkpoint_best.pt가 IMPLEMENTATION.md §13-❽ 문제로 오염됐으면
 # checkpoint_last.pt 사용)
-python reduce.py --model vit_tiny_patch16_224 \
+python pruning/reduce.py --model vit_tiny_patch16_224 \
   --checkpoint ./output/vit_tiny_30_final/checkpoint_last.pt \
   --output     ./output/vit_tiny_30_final/reduced.pt
 
@@ -270,9 +270,9 @@ python eval_token_pruned.py \
 # ONNX 변환 (reduced.pt / token_pruned_*.pt 공용, "token_pruning" 키로 자동 판별)
 # --output 생략 시 vit_tiny_c30_reduced.onnx / vit_tiny_c30_token70.onnx로 자동 네이밍
 # (IMPLEMENTATION.md §9 참고)
-python export_onnx.py --input ./output/vit_tiny_30_final/reduced.pt --verify
+python scripts/export_onnx.py --input ./output/vit_tiny_30_final/reduced.pt --verify
 
-python export_onnx.py \
+python scripts/export_onnx.py \
   --input ./output/vit_tiny_30_final/token_prune70/token_pruned_last.pt --verify
 ```
 

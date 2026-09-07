@@ -55,7 +55,7 @@ from torchvision import datasets
 
 from pruning.vit_reducing import apply_reduced_config
 from token_pruning import EvitTokenPruner       # 같은 아카이브 폴더의 sibling 모듈
-from engine import train_one_epoch, evaluate
+from pruning.engine import train_one_epoch, evaluate
 
 
 # ── argparse ───────────────────────────────────────────────────────────────────

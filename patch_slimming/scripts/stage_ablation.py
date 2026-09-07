@@ -26,7 +26,7 @@ for p in (str(_PS_ROOT), str(_ROOT), str(_ROOT / ".deps")):
     if p not in sys.path:
         sys.path.insert(0, p)
 
-from engine import evaluate
+from pruning.engine import evaluate
 from psvit.architecture import build_spec
 from psvit.compact import CompactPSViT
 from psvit.data import build_calibration_loader
@@ -118,6 +118,11 @@ def main():
                     help="Debug-only deterministic validation prefix; omit for full 50k")
     ap.add_argument("--workers", type=int, default=8)
     ap.add_argument("--policies", nargs="+", default=list(POLICIES))
+    ap.add_argument("--counts", nargs=3, type=int, default=None,
+                    metavar=("N3", "N6", "N9"),
+                    help="Custom 1-based layer 3/6/9 token counts; overrides --policies")
+    ap.add_argument("--policy-name", default="custom",
+                    help="Output subdirectory/name used together with --counts")
     ap.add_argument("--wandb", action="store_true")
     ap.add_argument("--wandb-project", default="vit-structural-patch-slimming")
     args = ap.parse_args()
@@ -152,8 +157,9 @@ def main():
     results.append({"policy": "baseline", "counts": [197, 197, 197],
                     "schedule": full_schedule, "macs": full_macs, **baseline})
 
-    for policy in args.policies:
-        counts = POLICIES[policy]
+    selected_policies = ([(args.policy_name, tuple(args.counts))] if args.counts is not None
+                         else [(name, POLICIES[name]) for name in args.policies])
+    for policy, counts in selected_policies:
         print(f"\n[policy] {policy}: {counts}")
         model_for_score = copy.deepcopy(base).eval()
         keep, scores = build_stage_masks(model_for_score, loader, device, counts,

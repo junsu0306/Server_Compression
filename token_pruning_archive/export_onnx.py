@@ -1,7 +1,7 @@
 """
 [ARCHIVED] Token Pruned 모델 → ONNX 변환 (EViT 실험 전용).
 
-이 파일은 token_pruning_archive 실험 재현용이다. 루트의 export_onnx.py는
+이 파일은 token_pruning_archive 실험 재현용이다. scripts/export_onnx.py는
 Stage 1(channel pruning, reduced.pt) 전용으로 축소되었고, token pruning(EViT)
 산출물(token_pruned_*.pt)과 NPU 우회(--npu-safe/--npu-mode)를 다루는 로직은
 여기로 옮겼다. 배경/실패 분석은 같은 폴더의 TOKEN_PRUNING.md 참고.

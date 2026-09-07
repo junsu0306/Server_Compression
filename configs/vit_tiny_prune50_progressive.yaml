@@ -1,7 +1,7 @@
 # ViT-Tiny  |  50% compression  |  Progressive Pruning + KD
 #
 # 실행 (GPU 6,7):
-#   CUDA_VISIBLE_DEVICES=6,7 torchrun --nproc_per_node=2 train.py \
+#   CUDA_VISIBLE_DEVICES=6,7 torchrun --nproc_per_node=2 pruning/train.py \
 #     --config configs/vit_tiny_prune50_progressive.yaml
 
 model: vit_tiny_patch16_224
