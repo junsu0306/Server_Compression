@@ -1,12 +1,7 @@
-"""
-Phase 6b — Compact PS-ViT 전체 classification fine-tuning (SPEC §13, §17 Phase 6).
+"""Fine-tune the compact model for 30 epochs with fixed token IDs and CE loss.
 
-모든 keep_ids 고정, compact 모델 전체 parameter 학습, CE loss. baseline fine-tuning
-recipe 재사용. distillation은 논문 핵심 알고리즘이 아니므로 자동 추가 안 함(§13.2).
-
-사용법:
-    CUDA_VISIBLE_DEVICES=6,7 torchrun --nproc_per_node=2 patch_slimming/scripts/finetune.py \
-        --config patch_slimming/configs/reference/deit_tiny_ps.yaml
+Token tensors remain compact during training. Configuration and run names are
+materialized by scripts/run_pipeline.py from configs/final.yaml.
 """
 
 from __future__ import annotations
@@ -14,6 +9,9 @@ from __future__ import annotations
 import os
 import sys
 import argparse
+import random
+import json
+import numpy as np
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 _PS_ROOT = os.path.dirname(_HERE)
@@ -86,6 +84,7 @@ def main():
     args = ap.parse_args()
     with open(args.config) as f:
         cfg = yaml.safe_load(f)
+    random.seed(cfg["seed"]); np.random.seed(cfg["seed"]); torch.manual_seed(cfg["seed"])
     is_main = setup_ddp(args)
     device = torch.device(f"cuda:{args.gpu}" if torch.cuda.is_available() else "cpu")
 
@@ -177,6 +176,8 @@ def main():
         stats = evaluate(vl, eval_model, device, amp=True)
         if is_main:
             best = max(best, stats["acc1"])
+            with open(os.path.join(out_dir, "metrics.jsonl"), "a") as stream:
+                stream.write(json.dumps({"epoch": epoch, "train": train_stats, "val": stats}) + "\n")
             print(f"  val_top1={stats['acc1']:.2f}%  best={best:.2f}%")
             metadata = {"model": eval_model.model.state_dict(), "model_name": spec.model_name,
                         "architecture": arch_path, "epoch": epoch, "best_acc1": best,
@@ -184,9 +185,12 @@ def main():
                         "scaler": scaler.state_dict()}
             if "mlp_dims" in searched:
                 metadata["mlp_dims"] = searched["mlp_dims"]
-            torch.save(metadata, os.path.join(out_dir, "compact_finetuned_last.pt"))
+            temporary = os.path.join(out_dir, "compact_finetuned.tmp")
+            torch.save(metadata, temporary)
+            os.replace(temporary, os.path.join(out_dir, "compact_finetuned_last.pt"))
             if stats["acc1"] >= best:
-                torch.save(metadata, os.path.join(out_dir, "compact_finetuned_best.pt"))
+                torch.save(metadata, temporary)
+                os.replace(temporary, os.path.join(out_dir, "compact_finetuned_best.pt"))
             if wandb_run is not None:
                 wandb_run.log({"epoch": epoch, "train/loss": train_stats["loss"],
                                "train/top1": train_stats["top1"], "train/top5": train_stats["top5"],

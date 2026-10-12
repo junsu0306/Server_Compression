@@ -1,0 +1,38 @@
+{
+  "key": "tiny50",
+  "kind": "patch_slimming",
+  "model": "vit_tiny_patch16_224",
+  "source": "/workspace/etri_iitp/JS/Server_Compression/output/final_20261006/tiny50/03_patch_slimming_paper/compact_finetuned_best.pt",
+  "dataset": "/workspace/etri_iitp/JS/Server_Compression/data/imagenet/val",
+  "samples": 50000,
+  "dtype": "float32",
+  "amp": false,
+  "batch_size": 128,
+  "data_config": {
+    "input_size": [
+      3,
+      224,
+      224
+    ],
+    "interpolation": "bicubic",
+    "mean": [
+      0.5,
+      0.5,
+      0.5
+    ],
+    "std": [
+      0.5,
+      0.5,
+      0.5
+    ],
+    "crop_pct": 0.9,
+    "crop_mode": "center"
+  },
+  "parameters": 2862256,
+  "metrics": {
+    "loss": 1.8065163581848145,
+    "acc1": 59.252,
+    "acc5": 82.27
+  },
+  "seconds": 62.32485175970942
+}

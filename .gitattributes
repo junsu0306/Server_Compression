@@ -1,0 +1,6 @@
+# Only final release model binaries use LFS. Text evidence stays ordinary Git.
+# Preserve evidence bytes/hashes on Windows as well as Linux.
+output/release_final_20261006/** -text
+output/release_final_20261006/reports/*.csv whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
+output/release_final_20261006/**/*.pt filter=lfs diff=lfs merge=lfs -text
+output/release_final_20261006/**/*.onnx filter=lfs diff=lfs merge=lfs -text

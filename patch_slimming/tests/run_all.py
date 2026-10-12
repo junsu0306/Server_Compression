@@ -1,4 +1,4 @@
-"""전체 게이팅 테스트 실행 (SPEC §16). Phase 1~2 및 scoring 정확성 검증.
+"""전체 게이팅 테스트 실행. Phase 1~2 및 scoring 정확성 검증.
 
     python patch_slimming/tests/run_all.py
 
@@ -18,7 +18,6 @@ MODULES = [
     "test_reconstruct",
     "test_search_state",
     "test_compact",
-    "test_structural_stage",
 ]
 
 

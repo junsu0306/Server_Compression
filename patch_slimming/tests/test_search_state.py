@@ -8,7 +8,7 @@ from _util import run_tests
 from psvit.architecture import ArchitectureSpec, build_spec
 from psvit.ids import sorted_union
 from psvit.search import (
-    _load_checkpoint, _save_checkpoint, initial_growth_count,
+    _load_checkpoint, _save_checkpoint,
     rank_candidate_patch_ids,
 )
 
@@ -29,14 +29,6 @@ def test_candidate_ids_follow_score_device():
     ranked = rank_candidate_patch_ids(scores, torch.tensor([0], device=device), num_global=6)
     assert ranked.device == scores.device
     assert ranked.tolist() == [5, 4, 3, 2, 1]
-
-
-def test_progressive_growth_skips_deepest_searchable_layer():
-    cfg = {"min_growth_per_shallower_layer": 5}
-    assert initial_growth_count(10, 10, 196, cfg) == 0
-    assert initial_growth_count(9, 10, 76, cfg) == 5
-    assert initial_growth_count(0, 10, 3, cfg) == 3
-    assert initial_growth_count(9, 10, 76, {}) == 0
 
 
 def test_architecture_round_trip():

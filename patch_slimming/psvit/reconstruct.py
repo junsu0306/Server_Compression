@@ -1,15 +1,15 @@
 """
-§9 — Block reconstruction fine-tuning.
+Block reconstruction fine-tuning.
 
 현재 탐색 중인 student.blocks[t]의 parameter만 학습한다. 다음 block student.blocks[t+1]은
-parameter는 고정하되 gradient는 통과시킨다 (torch.no_grad로 감싸지 않음, SPEC §9.1).
+parameter는 고정하되 gradient는 통과시킨다 (torch.no_grad로 감싸지 않음, ).
 
-목표(SPEC §9.2): teacher(frozen 원본)의 block t 입력 Z_{t-1}을 주면, slim block t
+목표: teacher(frozen 원본)의 block t 입력 Z_{t-1}을 주면, slim block t
 (current_keep_ids) → frozen slim block t+1 (next_keep_ids) 의 출력이 teacher의 block t+1
 출력(next_keep_ids row)을 복원하도록 한다.
 
-loss: element-wise MSE (SPEC §9.4 [DECISION]). raw/relative frobenius도 로깅.
-error_metric 기본값 mse로 acceptance 판정 (SPEC §9.4).
+loss: element-wise MSE. raw/relative frobenius도 로깅.
+후보 채택은 별도 평가셋의 샘플별 relative squared Frobenius 평균으로 판정한다.
 """
 
 from __future__ import annotations
@@ -68,9 +68,9 @@ def finetune_block_for_candidate(
     current_keep_ids: Tensor, next_keep_ids: Tensor,
     calib_loader, device, cfg: dict,
 ) -> Dict[str, float]:
-    """candidate mask에 대해 block t를 cfg.epochs 만큼 fine-tuning (cumulative, SPEC §8.6).
+    """candidate mask에 대해 block t를 cfg.epochs 만큼 fine-tuning (cumulative, ).
 
-    cfg: {optimizer, learning_rate, weight_decay, epochs, grad_clip_norm} (SPEC §9.5).
+    cfg: {optimizer, learning_rate, weight_decay, epochs, grad_clip_norm}.
     """
     shp = get_shape(student)
     all_ids = torch.arange(shp.num_global_tokens, device=device)
@@ -122,7 +122,7 @@ def evaluate_reconstruction(
     current_keep_ids: Tensor, next_keep_ids: Tensor,
     calib_loader, device,
 ) -> Dict[str, float]:
-    """다음 layer feature 복원 오차 (SPEC §9.4). mse / raw_frobenius_sq / relative_frobenius_sq."""
+    """다음 layer feature 복원 오차. mse / raw_frobenius_sq / relative_frobenius_sq."""
     shp = get_shape(student)
     all_ids = torch.arange(shp.num_global_tokens, device=device)
     student.eval()

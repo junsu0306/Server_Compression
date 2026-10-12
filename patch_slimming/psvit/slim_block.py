@@ -1,5 +1,5 @@
 """
-§5 — SlimTransformerBlock (rectangular attention).
+SlimTransformerBlock (rectangular attention).
 
 기존 timm Block의 weight를 그대로 재사용하되, 토큰 흐름만 바꾼다:
     Q      : 출력으로 유지할 N_out개 토큰에서만 계산
@@ -8,12 +8,12 @@
     residual: 입력에서 output 토큰 row만 선택
     MLP    : N_out개 output 토큰에서만
 
-토큰 선택 방식 (SPEC §14.0):
+토큰 선택 방식:
     "index_select" — 학습/검색(GPU)용. differentiable, 정확.
     "matmul"       — NPU export용. 상수 선택행렬 P(N_out×N_in) @ x. Gather 없음.
     두 방식은 수치적으로 동일하다.
 
-수치 등가성 요구 (SPEC §5.5, test로 게이트):
+수치 등가성 요구:
     output_ids == active_ids(전체)  → slim_block(x) ≈ original_block(x)
     output_ids == subset            → slim_block(x) ≈ original_block(x)[subset]
 """
@@ -40,7 +40,7 @@ class SlimBlockOutput:
 
 
 def _split_qkv(attn: nn.Module):
-    """fused qkv Linear를 Wq/Wk/Wv (+bias)로 논리 분할 (SPEC §5.3). weight 복제 아님(view)."""
+    """fused qkv Linear를 Wq/Wk/Wv (+bias)로 논리 분할. weight 복제 아님(view)."""
     W = attn.qkv.weight                       # [3D, D]
     D = W.shape[1]
     b = attn.qkv.bias                         # [3D] or None
@@ -126,7 +126,7 @@ class SlimBlock(nn.Module):
         k = self._apply_norm("k_norm", self._heads(F.linear(x_norm, Wk, bk)))   # [B,H,N_in,dh]
         v = self._heads(F.linear(x_norm, Wv, bv))                               # [B,H,N_in,dh]
 
-        # Q: 출력 토큰만 (선택 후 projection — SPEC §5.3, Q 연산 절감)
+        # Q: 출력 토큰만 (선택 후 projection — Q 연산 절감)
         x_norm_sel = select_rows(x_norm, out_local, self.select_mode, self._sel_mat_q)  # [B,N_out,D]
         q = self._apply_norm("q_norm", self._heads(F.linear(x_norm_sel, Wq, bq)))       # [B,H,N_out,dh]
 

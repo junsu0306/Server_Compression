@@ -1,12 +1,12 @@
 """
-§6 — Attention 및 feature 계측.
+Attention 및 feature 계측.
 
-계측을 켜도 baseline logits가 변하면 안 된다 (SPEC §6.2). 그래서 원본 block.forward는
+계측을 켜도 baseline logits가 변하면 안 된다. 그래서 원본 block.forward는
 그대로 실행해 x를 진행시키고, attention probability는 norm1(x)로부터 별도로 재계산한다
-(x에 영향 없음). softmax **이후** probability를 저장한다 (SPEC §6.1).
+(x에 영향 없음). softmax **이후** probability를 저장한다.
 
 메모리: attention [B,H,N,N]는 크므로 target layer별 streaming(scoring.py에서 처리)을
-권장. 이 모듈의 capture_full은 Phase 1 검증/소규모용이다 (SPEC §6.3).
+권장. 이 모듈의 capture_full은 Phase 1 검증/소규모용이다.
 """
 
 from __future__ import annotations
@@ -49,7 +49,7 @@ def _full_attention(block, x: Tensor) -> Tensor:
 def capture_full(model, images: Tensor, capture_attention: bool = True) -> CaptureResult:
     """full ViT를 block별로 돌리며 z_in / (선택) attention / logits 캡처.
 
-    logits는 timm forward와 동일해야 한다 (§6.2 test). model은 eval 상태로 호출.
+    logits는 timm forward와 동일해야 한다. model은 eval 상태로 호출.
     """
     x = embed_tokens(model, images)
     z_in: List[Tensor] = []
@@ -67,7 +67,7 @@ def capture_full(model, images: Tensor, capture_attention: bool = True) -> Captu
 
 @torch.no_grad()
 def logits_match(model, images: Tensor, atol: float = 1e-4) -> tuple[bool, float]:
-    """§6.2 — 계측 forward가 timm 표준 forward와 logit이 일치하는지 검증."""
+    """계측 forward가 timm 표준 forward와 logit이 일치하는지 검증."""
     ref = model(images)
     got = capture_full(model, images, capture_attention=False).logits
     max_diff = (ref - got).abs().max().item()

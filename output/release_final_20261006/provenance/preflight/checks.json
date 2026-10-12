@@ -1,0 +1,31 @@
+{
+  "updated_utc": "2026-10-07T06:40:17.665001+00:00",
+  "checks": [
+    {
+      "check": "unit",
+      "command": [
+        "-m",
+        "unittest",
+        "discover",
+        "-s",
+        "tests",
+        "-v"
+      ],
+      "exit_code": 0
+    },
+    {
+      "check": "patch",
+      "command": [
+        "patch_slimming/tests/run_all.py"
+      ],
+      "exit_code": 0
+    },
+    {
+      "check": "export",
+      "command": [
+        "tests/verify_exports.py"
+      ],
+      "exit_code": 0
+    }
+  ]
+}

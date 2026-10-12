@@ -1,8 +1,8 @@
 """
-§4 — Architecture specification 직렬화.
+Architecture specification 직렬화.
 
 search 결과(layer별 고정 keep global IDs)를 weight와 별도 JSON으로 저장/복원한다.
-compact 모델은 이 spec으로 재현한다 (SPEC §4.1, §12).
+compact 모델은 이 spec으로 재현한다.
 """
 
 from __future__ import annotations

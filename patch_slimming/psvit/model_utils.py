@@ -1,8 +1,8 @@
 """
 timm ViT/DeiT adapter — 모델 검증, block/attention 속성 접근, 형상 정보.
 
-SPEC §1.2/§1.3: 표준 단일 CLS 토큰 ViT/DeiT만 지원. distilled(dist_token) 또는
-prefix token이 CLS 하나가 아닌 모델은 조기 실패(§1.3의 명시적 adapter 정책).
+표준 단일 CLS 토큰 ViT/DeiT만 지원. distilled(dist_token) 또는
+prefix token이 CLS 하나가 아닌 모델은 조기 실패.
 """
 
 from __future__ import annotations
@@ -53,17 +53,17 @@ class ViTShape:
 
 
 def validate_vit(model: nn.Module) -> None:
-    """지원 범위 검증 (SPEC §1.3). 조용히 우회하지 않고 명시적으로 실패한다."""
+    """지원 범위 검증. 조용히 우회하지 않고 명시적으로 실패한다."""
     if getattr(model, "dist_token", None) is not None:
         raise NotImplementedError(
-            "distilled 모델(dist_token 존재) 미지원 — 논문 재현은 CLS 하나인 모델로 제한(SPEC §1.3)."
+            "distilled 모델(dist_token 존재) 미지원 — 논문 재현은 CLS 하나인 모델로 제한."
         )
     if not hasattr(model, "cls_token") or model.cls_token is None:
         raise NotImplementedError("cls_token이 없는 모델 미지원 (no_embed_class 등).")
     n_prefix = int(getattr(model, "num_prefix_tokens", 1))
     if n_prefix != 1:
         raise NotImplementedError(
-            f"num_prefix_tokens={n_prefix} 미지원. 첫 구현은 CLS 하나만 지원(SPEC §1.3)."
+            f"num_prefix_tokens={n_prefix} 미지원. 첫 구현은 CLS 하나만 지원."
         )
     if not hasattr(model, "blocks") or len(model.blocks) == 0:
         raise RuntimeError("model.blocks 접근 불가 — 표준 timm ViT 구조가 아님.")
@@ -126,7 +126,7 @@ def head_from_tokens(model: nn.Module, tokens: torch.Tensor, cls_local_index: in
 def attn_qkv(attn: nn.Module, x_norm: torch.Tensor):
     """norm1(x) → (q, k, v) 각 [B, H, N, head_dim], q_norm/k_norm 적용 후.
 
-    timm Attention 내부와 동일하게 fused qkv를 분해한다 (SPEC §5.3). attn.forward는
+    timm Attention 내부와 동일하게 fused qkv를 분해한다. attn.forward는
     호출하지 않으므로 fused_attn 경로/정확도에 영향 없다.
     """
     B, N, C = x_norm.shape

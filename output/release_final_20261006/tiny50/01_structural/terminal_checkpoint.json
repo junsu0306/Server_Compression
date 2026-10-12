@@ -1,0 +1,7 @@
+{
+  "completed_epochs": 30,
+  "selection": "terminal_epoch",
+  "source": "/workspace/etri_iitp/JS/Server_Compression/output/final_20261006/tiny50/01_structural/checkpoint_last.pt",
+  "checkpoint": "/workspace/etri_iitp/JS/Server_Compression/output/final_20261006/tiny50/01_structural/checkpoint_final.pt",
+  "sha256": "67334c74e6031617d1a0dcab4d0fe53280c9da1f073e972ff77bec425df98346"
+}

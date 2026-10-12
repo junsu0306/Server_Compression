@@ -1,0 +1,77 @@
+{
+  "key": "tiny50",
+  "phase": "patch",
+  "selected_batch": 640,
+  "headroom_mib": 1536.0,
+  "trials": [
+    {
+      "key": "tiny50",
+      "phase": "patch",
+      "batch_size": 384,
+      "physical_gpu": "1",
+      "steps": 5,
+      "synthetic_input": true,
+      "images_per_second": 2574.5230661327605,
+      "peak_allocated_mib": 4179.087890625,
+      "peak_reserved_mib": 5254.0,
+      "free_before_mib": 10863.6875,
+      "free_after_mib": 5557.6875,
+      "total_mib": 11019.5625,
+      "stats": {
+        "loss": 6.880949592590332,
+        "task_kd_loss": 6.880949592590332,
+        "memory_loss": 0.0,
+        "top1": 0.46875003576278684,
+        "top5": 1.8750000476837159
+      },
+      "memory": {},
+      "status": "ok"
+    },
+    {
+      "key": "tiny50",
+      "phase": "patch",
+      "batch_size": 512,
+      "physical_gpu": "1",
+      "steps": 5,
+      "synthetic_input": true,
+      "images_per_second": 2666.804150004956,
+      "peak_allocated_mib": 5499.42626953125,
+      "peak_reserved_mib": 6970.0,
+      "free_before_mib": 10863.6875,
+      "free_after_mib": 3841.6875,
+      "total_mib": 11019.5625,
+      "stats": {
+        "loss": 6.862021827697754,
+        "task_kd_loss": 6.862021827697754,
+        "memory_loss": 0.0,
+        "top1": 0.390625,
+        "top5": 1.328125
+      },
+      "memory": {},
+      "status": "ok"
+    },
+    {
+      "key": "tiny50",
+      "phase": "patch",
+      "batch_size": 640,
+      "physical_gpu": "1",
+      "steps": 5,
+      "synthetic_input": true,
+      "images_per_second": 2702.225751116145,
+      "peak_allocated_mib": 6842.06103515625,
+      "peak_reserved_mib": 8716.0,
+      "free_before_mib": 10863.6875,
+      "free_after_mib": 2095.6875,
+      "total_mib": 11019.5625,
+      "stats": {
+        "loss": 6.926163291931152,
+        "task_kd_loss": 6.926163291931152,
+        "memory_loss": 0.0,
+        "top1": 0.1875,
+        "top5": 0.8125
+      },
+      "memory": {},
+      "status": "ok"
+    }
+  ]
+}

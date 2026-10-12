@@ -1,16 +1,16 @@
 """
-§8 / §11 — Algorithm 1 top-down mask search.
+Algorithm 1 top-down mask search.
 
 마지막 CLS 출력에서 시작(keep_ids[L-1]=[CLS]), t=L-2..0 방향으로 이동하며 각 layer의
 고정 keep mask를 찾는다. 각 target layer t:
     1. hybrid network로 patch significance 평균 score 계산 (scoring.estimate_mean_scores)
     2. score 내림차순으로 candidate 정렬 (base=keep_ids[t+1], prefix 제외)
     3. r을 search_step 단위로 늘리며 block t reconstruction fine-tuning → 다음 layer 복원
-       오차가 epsilon 이하가 되면 mask 확정 (§8.5)
-    4. nested invariant 검증 + layer checkpoint 저장 (resume 가능, §8.7/§16.8)
+       오차가 epsilon 이하가 되면 mask 확정
+    4. nested invariant 검증 + layer checkpoint 저장 (resume 가능)
 
-논문 미기재 값은 SPEC의 [DECISION]: cumulative fine-tuning(§8.6), MSE metric(§9.4),
-path-energy DP(§7.5).
+Block 학습은 MSE, 후보 채택은 샘플별 relative squared Frobenius 평균으로 판단한다.
+후보 간 block 가중치는 누적하며 토큰 수의 강제 점진 감소 제약은 두지 않는다.
 """
 
 from __future__ import annotations
@@ -30,7 +30,7 @@ from .reconstruct import finetune_block_for_candidate, evaluate_reconstruction
 
 def rank_candidate_patch_ids(mean_scores: Tensor, base_ids: Tensor,
                              num_global: int, prefix_ids=(CLS_ID,)) -> Tensor:
-    """score 내림차순으로 candidate global patch ID 정렬. base/prefix는 제외 (SPEC §8.4)."""
+    """score 내림차순으로 candidate global patch ID 정렬. base/prefix는 제외."""
     exclude = set(as_long_ids(base_ids).tolist()) | set(int(p) for p in prefix_ids)
     cand = torch.tensor(
         [g for g in range(num_global) if g not in exclude],
@@ -43,15 +43,6 @@ def rank_candidate_patch_ids(mean_scores: Tensor, base_ids: Tensor,
     return cand[order]
 
 
-def initial_growth_count(t: int, last_searchable_layer: int,
-                         candidate_count: int, cfg: dict) -> int:
-    """Return the optional minimum growth beyond the next layer's base mask."""
-    if t >= last_searchable_layer:
-        return 0
-    growth = max(0, int(cfg.get("min_growth_per_shallower_layer", 0)))
-    return min(growth, candidate_count)
-
-
 def search_layer(
     model, teacher, t: int, keep_ids: List[Optional[Tensor]],
     score_loader, reconstruction_train_loader, reconstruction_eval_loader,
@@ -62,7 +53,9 @@ def search_layer(
     N = shp.num_global_tokens
     all_ids = torch.arange(N, device=device)
     epsilon = float(cfg["epsilon"])
-    error_metric = cfg.get("error_metric", "mse")
+    error_metric = cfg["error_metric"]
+    if error_metric != "sample_relative_frobenius_sq_mean":
+        raise ValueError("Acceptance requires per-sample relative squared Frobenius error")
     search_step = int(cfg["search_step"])
     max_iters = int(cfg.get("max_search_iters", 10_000))
 
@@ -81,7 +74,7 @@ def search_layer(
         "mean": float(patch_scores.mean().item()),
     }
 
-    r = initial_growth_count(t, shp.num_blocks - 2, int(candidate_ids.numel()), cfg)
+    r = 0
     it, accepted, accepted_err = 0, False, float("nan")
     while not accepted:
         it += 1
@@ -99,7 +92,6 @@ def search_layer(
         err = metrics[error_metric]
         records.append({
             "layer": t, "r": r, "n_keep": int(current_ids.numel()),
-            "minimum_growth_constraint": int(cfg.get("min_growth_per_shallower_layer", 0)),
             "candidate_keep_ids": current_ids.detach().cpu().tolist(),
             "train_loss": ft.get("loss"),
             "train_loss_by_epoch": ft.get("loss_by_epoch", []),
@@ -153,7 +145,7 @@ def run_patch_slimming_search(
     checkpoint_dir: str, resume: bool = True,
     reconstruction_train_loader=None, reconstruction_eval_loader=None,
 ):
-    """SPEC §11 — 전체 top-down search. layer checkpoint로 재개 가능.
+    """— 전체 top-down search. layer checkpoint로 재개 가능.
 
     model: student (탐색·fine-tuning 대상, in-place로 blocks[t] weight 갱신)
     teacher: frozen 원본 (deepcopy). 둘 다 이미 device 위, eval 준비.

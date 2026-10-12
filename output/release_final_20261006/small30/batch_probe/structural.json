@@ -1,0 +1,95 @@
+{
+  "key": "small30",
+  "phase": "structural",
+  "selected_batch": 192,
+  "headroom_mib": 1536.0,
+  "trials": [
+    {
+      "key": "small30",
+      "phase": "structural",
+      "batch_size": 128,
+      "physical_gpu": "2",
+      "steps": 5,
+      "synthetic_input": true,
+      "images_per_second": 637.0947835386081,
+      "peak_allocated_mib": 5035.1533203125,
+      "peak_reserved_mib": 5166.0,
+      "free_before_mib": 10863.6875,
+      "free_after_mib": 5647.6875,
+      "total_mib": 11019.5625,
+      "stats": {
+        "loss": 6.402109527587891,
+        "task_kd_loss": 6.399179840087891,
+        "memory_loss": 0.0029296875,
+        "top1": 0.15625,
+        "top5": 0.3125
+      },
+      "memory": {
+        "memory/reduced_mib": 71.55810546875,
+        "memory/max_mib": 71.55517578125,
+        "memory/excess_mib": 0.0029296875,
+        "memory/penalty": 0.0029296875,
+        "memory/profile_epoch": 0
+      },
+      "status": "ok"
+    },
+    {
+      "key": "small30",
+      "phase": "structural",
+      "batch_size": 192,
+      "physical_gpu": "2",
+      "steps": 5,
+      "synthetic_input": true,
+      "images_per_second": 672.3921834374468,
+      "peak_allocated_mib": 7279.19677734375,
+      "peak_reserved_mib": 7398.0,
+      "free_before_mib": 10863.6875,
+      "free_after_mib": 3415.6875,
+      "total_mib": 11019.5625,
+      "stats": {
+        "loss": 6.386493301391601,
+        "task_kd_loss": 6.383563613891601,
+        "memory_loss": 0.0029296875,
+        "top1": 0.0,
+        "top5": 0.6250000476837159
+      },
+      "memory": {
+        "memory/reduced_mib": 71.55810546875,
+        "memory/max_mib": 71.55517578125,
+        "memory/excess_mib": 0.0029296875,
+        "memory/penalty": 0.0029296875,
+        "memory/profile_epoch": 0
+      },
+      "status": "ok"
+    },
+    {
+      "key": "small30",
+      "phase": "structural",
+      "batch_size": 256,
+      "physical_gpu": "2",
+      "steps": 5,
+      "synthetic_input": true,
+      "images_per_second": 674.0281878390309,
+      "peak_allocated_mib": 9479.4345703125,
+      "peak_reserved_mib": 9746.0,
+      "free_before_mib": 10863.6875,
+      "free_after_mib": 1067.6875,
+      "total_mib": 11019.5625,
+      "stats": {
+        "loss": 6.400942611694336,
+        "task_kd_loss": 6.398012924194336,
+        "memory_loss": 0.0029296875,
+        "top1": 0.078125,
+        "top5": 0.78125
+      },
+      "memory": {
+        "memory/reduced_mib": 71.55810546875,
+        "memory/max_mib": 71.55517578125,
+        "memory/excess_mib": 0.0029296875,
+        "memory/penalty": 0.0029296875,
+        "memory/profile_epoch": 0
+      },
+      "status": "insufficient_headroom"
+    }
+  ]
+}

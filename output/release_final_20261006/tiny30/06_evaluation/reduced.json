@@ -1,0 +1,38 @@
+{
+  "key": "tiny30",
+  "kind": "reduced",
+  "model": "vit_tiny_patch16_224",
+  "source": "/workspace/etri_iitp/JS/Server_Compression/output/final_20261006/tiny30/02_reduced/reduced.pt",
+  "dataset": "/workspace/etri_iitp/JS/Server_Compression/data/imagenet/val",
+  "samples": 50000,
+  "dtype": "float32",
+  "amp": false,
+  "batch_size": 128,
+  "data_config": {
+    "input_size": [
+      3,
+      224,
+      224
+    ],
+    "interpolation": "bicubic",
+    "mean": [
+      0.5,
+      0.5,
+      0.5
+    ],
+    "std": [
+      0.5,
+      0.5,
+      0.5
+    ],
+    "crop_pct": 0.9,
+    "crop_mode": "center"
+  },
+  "parameters": 4003396,
+  "metrics": {
+    "loss": 1.0928192360687257,
+    "acc1": 72.212,
+    "acc5": 91.168
+  },
+  "seconds": 47.850436869077384
+}

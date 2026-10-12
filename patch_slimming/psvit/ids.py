@@ -1,5 +1,5 @@
 """
-§3 — Global / Local token ID 규칙과 mask invariant.
+Global / Local token ID 규칙과 mask invariant.
 
 Global token ID: 원본 unpruned sequence에서의 영구 위치.
     표준 단일 CLS ViT (timm num_prefix_tokens=1): global id 0 = CLS,
@@ -7,7 +7,7 @@ Global token ID: 원본 unpruned sequence에서의 영구 위치.
 
 Local token index: compact tensor 안에서의 현재 위치.
 
-모든 mask/score/serialization은 global ID 기준으로 관리한다 (SPEC §3.2, §20).
+모든 mask/score/serialization은 global ID 기준으로 관리한다.
 """
 
 from __future__ import annotations
@@ -28,7 +28,7 @@ def as_long_ids(ids: Sequence[int] | Tensor) -> Tensor:
 
 
 def assert_sorted_unique(ids: Tensor, name: str = "keep_ids") -> None:
-    """오름차순 + 중복 없음 검증 (SPEC §3.4)."""
+    """오름차순 + 중복 없음 검증."""
     ids = as_long_ids(ids)
     if ids.numel() == 0:
         raise ValueError(f"{name}: 비어 있음")
@@ -46,7 +46,7 @@ def global_to_local(active_global_ids: Tensor, requested_global_ids: Tensor) -> 
     requested_global_ids: [N_out]  뽑아낼 global ID (active의 부분집합이어야 함)
     반환: [N_out]  active_global_ids 내에서의 위치(local index)
 
-    예: active=[0,3,7,10], requested=[0,7] → local=[0,2]  (SPEC §3.3)
+    예: active=[0,3,7,10], requested=[0,7] → local=[0,2]
     """
     active = as_long_ids(active_global_ids)
     requested = as_long_ids(requested_global_ids)
@@ -66,7 +66,7 @@ def global_to_local(active_global_ids: Tensor, requested_global_ids: Tensor) -> 
 
 
 def validate_nested_masks(keep_ids: List[Optional[Tensor]], upto: Optional[int] = None) -> None:
-    """모든 layer에서 mask invariant 검증 (SPEC §3.4, §16.4).
+    """모든 layer에서 mask invariant 검증.
 
         CLS_ID ∈ keep_ids[l]
         set(keep_ids[l+1]) ⊆ set(keep_ids[l])
@@ -97,6 +97,6 @@ def validate_nested_masks(keep_ids: List[Optional[Tensor]], upto: Optional[int] 
 
 
 def sorted_union(base_ids: Tensor, extra_ids: Tensor) -> Tensor:
-    """base ∪ extra 를 정렬·유일 1D 텐서로 반환 (candidate mask 확장용, SPEC §8.5)."""
+    """base ∪ extra 를 정렬·유일 1D 텐서로 반환 (candidate mask 확장용, )."""
     both = torch.cat([as_long_ids(base_ids), as_long_ids(extra_ids)])
     return torch.unique(both)  # torch.unique는 정렬된 결과 반환

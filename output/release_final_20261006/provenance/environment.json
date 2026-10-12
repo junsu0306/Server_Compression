@@ -1,0 +1,14 @@
+{
+  "python": "3.10.18 (main, Jun  5 2025, 13:14:17) [GCC 11.2.0]",
+  "executable": "/opt/conda/envs/efficientvit/bin/python",
+  "packages": {
+    "torch": "2.6.0+cu118",
+    "torchvision": "0.21.0+cu118",
+    "timm": "1.0.25",
+    "numpy": "1.26.4",
+    "onnx": "1.21.0",
+    "onnxruntime": "1.23.2",
+    "wandb": "0.19.2"
+  },
+  "gpu_status": "index, uuid, name, driver_version\n0, GPU-5a528ff9-8405-8aa9-c720-c504d9658c70, NVIDIA GeForce RTX 2080 Ti, 520.61.05\n1, GPU-90b3bc89-cd36-660a-e519-ffe51a2cb260, NVIDIA GeForce RTX 2080 Ti, 520.61.05\n2, GPU-e05b9336-12a9-09fb-9c15-c1f4102ee1e0, NVIDIA GeForce RTX 2080 Ti, 520.61.05\n3, GPU-31039a66-c503-d1b9-1ab3-a9bd5d507efb, NVIDIA GeForce RTX 2080 Ti, 520.61.05\n4, GPU-8b972d3a-c6bf-6739-a9c1-55ede6b45440, NVIDIA GeForce RTX 2080 Ti, 520.61.05\n5, GPU-53497d9a-2fd2-08c1-0c02-590dd703ed34, NVIDIA GeForce RTX 2080 Ti, 520.61.05\n6, GPU-483c3899-a1a1-3eaf-954c-7d6cd03fd9b7, NVIDIA GeForce RTX 2080 Ti, 520.61.05\n7, GPU-9ffbb306-f4bf-9bb4-5c1c-c03bf7780459, NVIDIA GeForce RTX 2080 Ti, 520.61.05\n"
+}

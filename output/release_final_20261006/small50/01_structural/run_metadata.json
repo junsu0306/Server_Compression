@@ -1,0 +1,8 @@
+{
+  "train_samples": 1280297,
+  "val_samples": 50000,
+  "batch_size": 192,
+  "seed": 2022,
+  "source_baseline": "/workspace/etri_iitp/JS/Server_Compression/output/final_20261006/small50/00_budget/baseline.pt",
+  "memory_budget_json": "/workspace/etri_iitp/JS/Server_Compression/output/final_20261006/small50/00_budget/budget.json"
+}

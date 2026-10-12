@@ -1,33 +1,18 @@
-"""
-timm ViT / DeiT Soft Pruning Fine-tuning
+"""Global L2 FFN pruning with logit KD and an isolated target-peak memory budget.
 
-단일 GPU:
-    python pruning/train.py \\
-        --model vit_small_patch16_224 \\
-        --data-path /data/imagenet \\
-        --epochs 30 \\
-        --batch-size 256 \\
-        --target-compression 0.20 \\
-        --output-dir ./output/vit_small_prune20 \\
-        --wandb
-
-멀티 GPU (DDP, torchrun):
-    torchrun --nproc_per_node=4 pruning/train.py \\
-        --model vit_base_patch16_224 \\
-        --data-path /data/imagenet \\
-        --epochs 30 \\
-        --batch-size 128 \\
-        --target-compression 0.30 \\
-        --output-dir ./output/vit_base_prune30
-
-체크포인트 재개:
-    python pruning/train.py ... --resume ./output/vit_small_prune20/checkpoint_last.pt
+Use scripts/run_pipeline.py with configs/final.yaml to prepare the budget first.
+The measured memory excess is a scalar monitoring term, not a differentiable
+memory controller. The student starts from the saved pretrained baseline.
 """
 
 from __future__ import annotations
 
 import os
 import argparse
+import math
+import random
+import json
+import numpy as np
 import sys
 import yaml
 from pathlib import Path
@@ -47,6 +32,7 @@ from torchvision import datasets
 
 from pruning.vit_pruning import ViTPruner
 from pruning.engine import train_one_epoch, evaluate
+from pruning.memory_budget import MemoryBudget
 
 
 # ── argparse ───────────────────────────────────────────────────────────────────
@@ -56,7 +42,7 @@ def get_args() -> argparse.Namespace:
 
     # Config 파일 (YAML) — 지정 시 파일 값이 기본값으로 적용되고, CLI 인자로 override 가능
     p.add_argument("--config", default="",
-                   help="YAML config 파일 경로 (예: configs/vit_small_prune50.yaml)")
+                   help="run_pipeline.py가 생성한 configs/structural.yaml")
 
     # 데이터
     p.add_argument("--data-path", default="")
@@ -69,7 +55,9 @@ def get_args() -> argparse.Namespace:
     p.add_argument("--num-classes", type=int, default=1000)
 
     # 학습 하이퍼파라미터
-    p.add_argument("--epochs",         type=int,   default=50)
+    p.add_argument("--epochs",         type=int,   default=30)
+    p.add_argument("--lr-schedule-epochs", type=int, default=50,
+                   help="LR horizon, independent of the terminal training epoch")
     p.add_argument("--batch-size",     type=int,   default=256)
     p.add_argument("--lr",             type=float, default=5e-5)
     p.add_argument("--weight-decay",   type=float, default=0.05)
@@ -87,16 +75,9 @@ def get_args() -> argparse.Namespace:
     p.add_argument("--target-compression",   type=float, default=0.0)
     p.add_argument("--pruning-max-sparsity", type=float, default=0.95)
     p.add_argument("--prune-refresh-steps",  type=int,   default=100)
-    p.add_argument("--pruning-mode",         default="global",
-                   choices=["global", "uniform"],
-                   help="global=non-uniform(권장), uniform=모든 블록 동일 sparsity")
-    p.add_argument("--pruning-importance",   default="l2",
-                   choices=["l2", "taylor"],
-                   help="채널 중요도 기준. l2=weight크기, taylor=|w×∇w| (gradient 재활용, 추가비용 없음)")
-    p.add_argument("--prune-warmup-epochs",  type=int,   default=0,
-                   help="pruning 시작 전 유예 epoch 수 (0=즉시 적용)")
-    p.add_argument("--prune-ramp-epochs",    type=int,   default=0,
-                   help="sparsity 점진 증가 epoch 수 (0=즉시 target 적용)")
+    p.add_argument("--seed", type=int, default=2022)
+    p.add_argument("--initial-checkpoint", required=False, default="",
+                   help="baseline.pt saved before target budget preparation")
 
     # Knowledge Distillation
     p.add_argument("--kd-alpha",       type=float, default=0.0,
@@ -105,6 +86,16 @@ def get_args() -> argparse.Namespace:
                    help="KD softening temperature (권장: 3~5)")
     p.add_argument("--kd-teacher",     default="",
                    help="Teacher 모델 이름. 비어있으면 student와 동일 아키텍처 사용")
+
+    # Measured memory excess (scalar penalty, MiB).
+    p.add_argument("--memory-penalty-weight", type=float, default=0.0,
+                   help="lambda_mem; 0 disables memory profiling/penalty")
+    p.add_argument("--memory-budget-json", default="",
+                   help="immutable budget from an un-fine-tuned target structure")
+    p.add_argument("--memory-profile-interval", type=int, default=1, help="profiling interval in epochs")
+    p.add_argument("--memory-batch-size", type=int, default=1)
+    p.add_argument("--memory-warmups", type=int, default=10)
+    p.add_argument("--memory-runs", type=int, default=50)
 
     # 출력 / 체크포인트
     p.add_argument("--output-dir",   default="./output")
@@ -133,6 +124,18 @@ def get_args() -> argparse.Namespace:
 
     if not args.data_path:
         p.error("--data-path 또는 config 내 data_path 를 지정해야 합니다.")
+
+    if not math.isfinite(args.memory_penalty_weight) or args.memory_penalty_weight < 0:
+        p.error("--memory-penalty-weight must be finite and nonnegative")
+    if args.memory_penalty_weight > 0:
+        if args.target_compression <= 0:
+            p.error("memory penalty requires --target-compression > 0")
+        if not Path(args.memory_budget_json).is_file():
+            p.error("--memory-budget-json is required; run the budget preparation stage first")
+        if not Path(args.initial_checkpoint).is_file():
+            p.error("--initial-checkpoint baseline.pt is required")
+        if min(args.memory_profile_interval, args.memory_batch_size, args.memory_runs) < 1 or args.memory_warmups < 0:
+            p.error("memory interval/batch/runs must be positive; warmups must be nonnegative")
 
     return args
 
@@ -221,7 +224,7 @@ def build_scheduler(optimizer, args: argparse.Namespace):
     )
     cosine = torch.optim.lr_scheduler.CosineAnnealingLR(
         optimizer,
-        T_max=max(args.epochs - args.warmup_epochs, 1),
+        T_max=max(args.lr_schedule_epochs - args.warmup_epochs, 1),
         eta_min=args.min_lr,
     )
     return torch.optim.lr_scheduler.SequentialLR(
@@ -244,6 +247,7 @@ def save_checkpoint(
     epoch:        int,
     best_acc1:    float,
     args:         argparse.Namespace,
+    memory_budget=None,
 ) -> None:
     raw = model.module if hasattr(model, "module") else model
     ckpt = {
@@ -256,11 +260,14 @@ def save_checkpoint(
         "epoch":        epoch,
         "best_acc1":    best_acc1,
         "args":         vars(args),
+        "memory_budget": memory_budget.state_dict() if memory_budget is not None else None,
     }
-    torch.save(ckpt, path)
+    temporary = Path(path).with_suffix(".tmp")
+    torch.save(ckpt, temporary)
+    temporary.replace(path)
 
 
-def load_checkpoint(path: str, model, model_ema, optimizer, lr_scheduler, scaler, pruner):
+def load_checkpoint(path: str, model, model_ema, optimizer, lr_scheduler, scaler, pruner, memory_budget=None):
     ckpt = torch.load(path, map_location="cpu", weights_only=False)
 
     raw = model.module if hasattr(model, "module") else model
@@ -275,8 +282,20 @@ def load_checkpoint(path: str, model, model_ema, optimizer, lr_scheduler, scaler
 
     if pruner is not None and ckpt.get("pruner") is not None:
         pruner.load_state_dict(ckpt["pruner"])
+    if memory_budget is not None and ckpt.get("memory_budget") is not None:
+        memory_budget.load_state_dict(ckpt["memory_budget"])
 
     return ckpt["epoch"] + 1, ckpt.get("best_acc1", 0.0)
+
+
+def validate_resume_schedule(checkpoint, args):
+    """Never silently replace an already-trained learning-rate trajectory."""
+    previous = checkpoint["args"]
+    horizon = previous.get("lr_schedule_epochs", previous["epochs"])
+    if horizon != args.lr_schedule_epochs:
+        raise ValueError(f"Stored LR horizon {horizon} differs from requested {args.lr_schedule_epochs}")
+    if checkpoint["epoch"] + 1 > args.epochs:
+        raise ValueError("Checkpoint is beyond the requested terminal epoch; an exact earlier checkpoint is required")
 
 
 # ── 메인 ───────────────────────────────────────────────────────────────────────
@@ -284,12 +303,17 @@ def load_checkpoint(path: str, model, model_ema, optimizer, lr_scheduler, scaler
 def main():
     args     = get_args()
     is_main  = setup_distributed(args)
+    random.seed(args.seed); np.random.seed(args.seed); torch.manual_seed(args.seed)
+    torch.cuda.manual_seed_all(args.seed)
 
     Path(args.output_dir).mkdir(parents=True, exist_ok=True)
 
     device = torch.device(
         f"cuda:{args.gpu}" if torch.cuda.is_available() else "cpu"
     )
+    if args.memory_penalty_weight > 0 and device.type != "cuda":
+        raise ValueError("Memory penalty profiling requires a CUDA device")
+    memory_budget = MemoryBudget(args, device) if args.memory_penalty_weight > 0 else None
 
     # ── WandB ──────────────────────────────────────────────────────────────────
     wandb_run = None
@@ -303,16 +327,31 @@ def main():
             name=run_name,
             id=args.wandb_run_id or None,
             resume="allow" if args.wandb_run_id else None,
-            config=vars(args),
+            config=None if args.resume else vars(args),
         )
+        wandb_run.name = run_name
+        wandb_run.config.update(vars(args), allow_val_change=True)
 
     # ── 데이터 ─────────────────────────────────────────────────────────────────
     train_loader, val_loader, train_sampler = build_loaders(args)
+    if is_main:
+        data_info = {"train_samples": len(train_loader.dataset), "val_samples": len(val_loader.dataset),
+                     "batch_size": args.batch_size, "seed": args.seed,
+                     "source_baseline": args.initial_checkpoint, "memory_budget_json": args.memory_budget_json}
+        (Path(args.output_dir) / "run_metadata.json").write_text(json.dumps(data_info, indent=2) + "\n")
+        print(f"[Data] {data_info}")
 
     # ── 모델 (pretrained ImageNet-1k) ──────────────────────────────────────────
     model = timm.create_model(
-        args.model, pretrained=True, num_classes=args.num_classes
+        args.model, pretrained=not bool(args.initial_checkpoint), num_classes=args.num_classes
     )
+    initial_state = None
+    if args.initial_checkpoint:
+        initial = torch.load(args.initial_checkpoint, map_location="cpu", weights_only=False)
+        if initial["model_name"] != args.model or initial["trained_steps"] != 0:
+            raise ValueError("Initial checkpoint must be the budget baseline")
+        initial_state = initial["state_dict"]
+        model.load_state_dict(initial_state, strict=True)
     model = model.to(device)
 
     if is_main:
@@ -329,8 +368,12 @@ def main():
     if args.kd_alpha > 0:
         teacher_name = args.kd_teacher if args.kd_teacher else args.model
         teacher = timm.create_model(
-            teacher_name, pretrained=True, num_classes=args.num_classes
+            teacher_name, pretrained=not bool(initial_state), num_classes=args.num_classes
         ).to(device)
+        if initial_state is not None:
+            if teacher_name != args.model:
+                raise ValueError("The final KD teacher is the same baseline architecture")
+            teacher.load_state_dict(initial_state, strict=True)
         teacher.eval()
         for p in teacher.parameters():
             p.requires_grad_(False)
@@ -367,10 +410,6 @@ def main():
             target_compression=args.target_compression,
             max_sparsity=args.pruning_max_sparsity,
             index_refresh_steps=args.prune_refresh_steps,
-            mode=args.pruning_mode,
-            warmup_epochs=args.prune_warmup_epochs,
-            ramp_epochs=args.prune_ramp_epochs,
-            importance=args.pruning_importance,
         )
 
     # ── Optimizer & Scheduler ──────────────────────────────────────────────────
@@ -389,17 +428,29 @@ def main():
     start_epoch = 0
     best_acc1   = 0.0
     if args.resume:
+        resume_meta = torch.load(args.resume, map_location="cpu", weights_only=False)
+        validate_resume_schedule(resume_meta, args)
+        del resume_meta
         start_epoch, best_acc1 = load_checkpoint(
-            args.resume, model, model_ema, optimizer, lr_scheduler, scaler, pruner
+            args.resume, model, model_ema, optimizer, lr_scheduler, scaler, pruner, memory_budget
         )
         if is_main:
             print(f"[Resume] epoch={start_epoch}  best_acc1={best_acc1:.2f}%")
+    elif pruner is not None:
+        raw = model.module if hasattr(model, "module") else model
+        pruner.apply(raw)
+        if model_ema is not None:
+            from pruning.vit_reducing import transfer_pruning_mask
+            transfer_pruning_mask(raw, model_ema.module)
+        if memory_budget is not None:
+            memory_budget.maybe_refresh(model, model_ema, 0)
 
     # ── 학습 루프 ──────────────────────────────────────────────────────────────
     if is_main:
         print(
             f"\n=== Training: {args.model} ===\n"
-            f"  epochs={args.epochs}  batch={args.batch_size}  lr={args.lr}\n"
+            f"  terminal_epochs={args.epochs}  lr_schedule_epochs={args.lr_schedule_epochs}  "
+            f"batch={args.batch_size}  lr={args.lr}\n"
             f"  compression={args.target_compression}  amp={args.amp}  "
             f"ema={args.model_ema}\n"
             f"  kd={'ON (α=' + str(args.kd_alpha) + ', T=' + str(args.kd_temperature) + ')' if args.kd_alpha > 0 else 'OFF'}\n"
@@ -409,9 +460,6 @@ def main():
         if args.distributed:
             train_sampler.set_epoch(epoch)
 
-        # Progressive pruning: 에포크 시작 전 sparsity 스케줄 업데이트
-        if pruner is not None:
-            pruner.set_epoch(epoch)
 
         if is_main:
             print(f"\n── Epoch {epoch}/{args.epochs - 1}  "
@@ -429,6 +477,7 @@ def main():
             teacher=teacher,
             kd_alpha=args.kd_alpha,
             kd_temperature=args.kd_temperature,
+            memory_budget=memory_budget,
         )
         lr_scheduler.step()
 
@@ -440,6 +489,10 @@ def main():
         val_stats = evaluate(val_loader, eval_model, device, amp=args.amp)
 
         acc1    = val_stats["acc1"]
+        if is_main:
+            with (Path(args.output_dir) / "metrics.jsonl").open("a") as stream:
+                stream.write(json.dumps({"epoch": epoch, "train": train_stats, "val": val_stats,
+                                         "memory": memory_budget.metrics() if memory_budget else {}}) + "\n")
         is_best = acc1 > best_acc1
         if is_best:
             best_acc1 = acc1
@@ -464,6 +517,10 @@ def main():
                 "val/top1_best": best_acc1,
             }
             log_dict.update(sparsity_stats)
+            if memory_budget is not None:
+                log_dict.update(memory_budget.metrics())
+                log_dict["train/task_kd_loss"] = train_stats["task_kd_loss"]
+                log_dict["train/memory_penalty"] = train_stats["memory_loss"]
 
             # 블록별 sparsity 한 번에 보기 (bar chart)
             # pruning/layer/blocks/N/mlp 키만 사용 (ratio 0~1)
@@ -504,12 +561,14 @@ def main():
                 os.path.join(args.output_dir, "checkpoint_last.pt"),
                 model, model_ema, optimizer, lr_scheduler, scaler,
                 pruner, epoch, best_acc1, args,
+                memory_budget=memory_budget,
             )
             if is_best:
                 save_checkpoint(
                     os.path.join(args.output_dir, "checkpoint_best.pt"),
                     model, model_ema, optimizer, lr_scheduler, scaler,
                     pruner, epoch, best_acc1, args,
+                    memory_budget=memory_budget,
                 )
 
     if is_main:

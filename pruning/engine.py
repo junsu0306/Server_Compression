@@ -58,6 +58,7 @@ def train_one_epoch(
     teacher:        nn.Module | None = None,
     kd_alpha:       float = 0.5,
     kd_temperature: float = 4.0,
+    memory_budget=None,
 ) -> dict[str, float]:
     """
     한 epoch 학습.
@@ -76,6 +77,8 @@ def train_one_epoch(
     # teacher는 항상 eval 상태를 유지한다 (train_one_epoch가 바꾸지 않음)
 
     loss_m = AverageMeter()
+    task_loss_m = AverageMeter()
+    memory_loss_m = AverageMeter()
     top1_m = AverageMeter()
     top5_m = AverageMeter()
     start  = time.time()
@@ -100,6 +103,12 @@ def train_one_epoch(
                 ) * (T * T)
                 loss = (1.0 - kd_alpha) * loss + kd_alpha * kd_loss
 
+        task_loss = loss.detach()
+        memory_loss_value = memory_budget.penalty if memory_budget is not None else 0.0
+        if memory_budget is not None:
+            # Measurement is a constant, not a differentiable channel regularizer.
+            loss = loss.float() + memory_loss_value
+
         # ── Backward + optimizer.step ──────────────────────────────────────────
         optimizer.zero_grad()
         scaler.scale(loss).backward()
@@ -123,11 +132,18 @@ def train_one_epoch(
             actual = model.module if hasattr(model, "module") else model
             model_ema.update(actual)
 
+        # Measure after masking. The refreshed scalar is used from the next batch.
+        if memory_budget is not None and pruner is not None and pruner._step > 0:
+            memory_budget.maybe_refresh(model, model_ema, epoch)
+
         # ── 메트릭 ────────────────────────────────────────────────────────────
         with torch.no_grad():
             acc1, acc5 = accuracy(output.detach().float(), targets)
         bs = samples.size(0)
-        loss_m.update(loss.item(), bs)
+        loss_value = loss.item()
+        loss_m.update(loss_value, bs)
+        task_loss_m.update(task_loss.item() if memory_budget is not None else loss_value, bs)
+        memory_loss_m.update(memory_loss_value, bs)
         top1_m.update(acc1.item(), bs)
         top5_m.update(acc5.item(), bs)
 
@@ -139,7 +155,8 @@ def train_one_epoch(
                 f"top5={top5_m.avg:.2f}%  t={elapsed:.0f}s"
             )
 
-    return {"loss": loss_m.avg, "top1": top1_m.avg, "top5": top5_m.avg}
+    return {"loss": loss_m.avg, "task_kd_loss": task_loss_m.avg,
+            "memory_loss": memory_loss_m.avg, "top1": top1_m.avg, "top5": top5_m.avg}
 
 
 # ── 검증 ───────────────────────────────────────────────────────────────────────

@@ -1,0 +1,38 @@
+{
+  "key": "small50",
+  "kind": "baseline",
+  "model": "vit_small_patch16_224",
+  "source": "/workspace/etri_iitp/JS/Server_Compression/output/final_20261006/small50/00_budget/baseline.pt",
+  "dataset": "/workspace/etri_iitp/JS/Server_Compression/data/imagenet/val",
+  "samples": 50000,
+  "dtype": "float32",
+  "amp": false,
+  "batch_size": 128,
+  "data_config": {
+    "input_size": [
+      3,
+      224,
+      224
+    ],
+    "interpolation": "bicubic",
+    "mean": [
+      0.5,
+      0.5,
+      0.5
+    ],
+    "std": [
+      0.5,
+      0.5,
+      0.5
+    ],
+    "crop_pct": 0.9,
+    "crop_mode": "center"
+  },
+  "parameters": 22050664,
+  "metrics": {
+    "loss": 0.7005593017053604,
+    "acc1": 80.502,
+    "acc5": 95.862
+  },
+  "seconds": 90.98693537712097
+}

@@ -1,14 +1,8 @@
-"""
-Phase 5 — Top-down mask search 진입점 (SPEC §11, §17 Phase 5).
+"""Search nested static token masks on a structurally reduced ViT.
 
-Pretrained ViT/DeiT → calibration subset 기반 top-down search → layer별 고정 keep mask →
-architecture.json + searched student checkpoint 저장.
-
-사용법 (repo 루트에서):
-    python patch_slimming/scripts/search.py \
-        --config patch_slimming/configs/reference/deit_tiny_ps.yaml
-
-재개: 같은 output_dir로 다시 실행하면 search_last.pt에서 layer 단위 재개 (SPEC §16.8).
+Three disjoint ImageNet training subsets serve scoring, block reconstruction,
+and acceptance. Resume uses the checkpoint written after each searched layer.
+The runner generates this script's YAML from configs/final.yaml.
 """
 
 from __future__ import annotations
@@ -18,6 +12,8 @@ import sys
 import copy
 import json
 import argparse
+import random
+import numpy as np
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 _PS_ROOT = os.path.dirname(_HERE)
@@ -56,6 +52,7 @@ def main():
     ap.add_argument("--wandb-run-name", default="")
     args = ap.parse_args()
     cfg = load_cfg(args.config)
+    random.seed(cfg["seed"]); np.random.seed(cfg["seed"]); torch.manual_seed(cfg["seed"])
 
     device = torch.device(f"cuda:{args.gpu}" if torch.cuda.is_available() else "cpu")
     mcfg = cfg["model"]
@@ -83,10 +80,9 @@ def main():
         p.requires_grad_(False)
 
     # ── independent score / reconstruction train / acceptance eval sets ────────
-    ccfg = cfg["calibration"]
-    score_cfg = cfg.get("score_data", ccfg)
-    train_cfg = cfg.get("reconstruction_train", ccfg)
-    eval_cfg = cfg.get("reconstruction_eval", ccfg)
+    score_cfg = cfg["score_data"]
+    train_cfg = cfg["reconstruction_train"]
+    eval_cfg = cfg["reconstruction_eval"]
 
     def build_subset(name, subset_cfg, excluded=(), shuffle=False):
         return build_calibration_loader(
@@ -99,21 +95,14 @@ def main():
         )
 
     score_loader, data_cfg, score_indices = build_subset("score", score_cfg)
-    shared_legacy_data = not any(k in cfg for k in ("score_data", "reconstruction_train", "reconstruction_eval"))
-    if shared_legacy_data:
-        train_loader = eval_loader = score_loader
-        train_indices = eval_indices = score_indices
-    else:
-        train_loader, _, train_indices = build_subset("reconstruction_train", train_cfg, score_indices, True)
-        eval_loader, _, eval_indices = build_subset(
-            "reconstruction_eval", eval_cfg, list(score_indices) + list(train_indices), False)
-
-    if not shared_legacy_data:
-        assert set(score_indices).isdisjoint(train_indices)
-        assert set(score_indices).isdisjoint(eval_indices)
-        assert set(train_indices).isdisjoint(eval_indices)
+    train_loader, _, train_indices = build_subset("reconstruction_train", train_cfg, score_indices, True)
+    eval_loader, _, eval_indices = build_subset(
+        "reconstruction_eval", eval_cfg, list(score_indices) + list(train_indices), False)
+    assert set(score_indices).isdisjoint(train_indices)
+    assert set(score_indices).isdisjoint(eval_indices)
+    assert set(train_indices).isdisjoint(eval_indices)
     print(f"[data] score/train/eval={len(score_indices)}/{len(train_indices)}/{len(eval_indices)} "
-          f"shared_legacy={shared_legacy_data} mean/std={data_cfg['mean']}/{data_cfg['std']}")
+          f"disjoint=True mean/std={data_cfg['mean']}/{data_cfg['std']}")
 
     wandb_run = None
     wandb_enabled = bool(args.wandb or cfg.get("wandb", {}).get("enabled", False))
@@ -142,7 +131,7 @@ def main():
                 "score_samples": len(score_indices),
                 "reconstruction_train_samples": len(train_indices),
                 "reconstruction_eval_samples": len(eval_indices),
-                "shared_reconstruction_data": shared_legacy_data,
+                "shared_reconstruction_data": False,
                 "epsilon": cfg["search"]["epsilon"],
                 "search_step": cfg["search"]["search_step"],
                 "block_finetune": cfg.get("block_finetune", {}),
@@ -153,12 +142,10 @@ def main():
     scfg = cfg["search"]
     search_cfg = {
         "epsilon": scfg["epsilon"],
-        "error_metric": scfg.get("error_metric", "mse"),
+        "error_metric": scfg["error_metric"],
         "search_step": scfg["search_step"],
         "max_search_iters": scfg.get("max_search_iters", 10_000),
         "score_max_batches": scfg.get("score_max_batches"),
-        "min_growth_per_shallower_layer": scfg.get(
-            "min_growth_per_shallower_layer", 0),
         "block_finetune": cfg.get("block_finetune", {}),
     }
     if wandb_run is not None:
@@ -186,7 +173,7 @@ def main():
     # ── 저장: architecture.json + searched student + records ────────────────────
     spec = build_spec(
         model_name, shp, keep_ids, accepted_errors,
-        epsilon=scfg["epsilon"], error_metric=scfg.get("error_metric", "mse"),
+        epsilon=scfg["epsilon"], error_metric=scfg["error_metric"],
         search_step=scfg["search_step"], score_mode=cfg.get("score", {}).get("mode", "paper_path_energy_dp"),
     )
     spec.to_json(os.path.join(out_dir, "architecture.json"))

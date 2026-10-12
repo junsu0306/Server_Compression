@@ -1,0 +1,100 @@
+{
+  "key": "small30",
+  "phase": "patch",
+  "selected_batch": 256,
+  "headroom_mib": 1536.0,
+  "trials": [
+    {
+      "key": "small30",
+      "phase": "patch",
+      "batch_size": 128,
+      "physical_gpu": "2",
+      "steps": 5,
+      "synthetic_input": true,
+      "images_per_second": 895.1054479369323,
+      "peak_allocated_mib": 3888.64990234375,
+      "peak_reserved_mib": 4708.0,
+      "free_before_mib": 10863.6875,
+      "free_after_mib": 6103.6875,
+      "total_mib": 11019.5625,
+      "stats": {
+        "loss": 6.730807876586914,
+        "task_kd_loss": 6.730807876586914,
+        "memory_loss": 0.0,
+        "top1": 0.3125,
+        "top5": 2.5
+      },
+      "memory": {},
+      "status": "ok"
+    },
+    {
+      "key": "small30",
+      "phase": "patch",
+      "batch_size": 192,
+      "physical_gpu": "2",
+      "steps": 5,
+      "synthetic_input": true,
+      "images_per_second": 961.326840795022,
+      "peak_allocated_mib": 5720.66357421875,
+      "peak_reserved_mib": 6794.0,
+      "free_before_mib": 10863.6875,
+      "free_after_mib": 4017.6875,
+      "total_mib": 11019.5625,
+      "stats": {
+        "loss": 6.802298069000244,
+        "task_kd_loss": 6.802298069000244,
+        "memory_loss": 0.0,
+        "top1": 0.6250000238418579,
+        "top5": 2.083333396911621
+      },
+      "memory": {},
+      "status": "ok"
+    },
+    {
+      "key": "small30",
+      "phase": "patch",
+      "batch_size": 256,
+      "physical_gpu": "2",
+      "steps": 5,
+      "synthetic_input": true,
+      "images_per_second": 964.8609198380249,
+      "peak_allocated_mib": 7489.61376953125,
+      "peak_reserved_mib": 8958.0,
+      "free_before_mib": 10863.6875,
+      "free_after_mib": 1853.6875,
+      "total_mib": 11019.5625,
+      "stats": {
+        "loss": 6.832916927337647,
+        "task_kd_loss": 6.832916927337647,
+        "memory_loss": 0.0,
+        "top1": 0.46875,
+        "top5": 1.5625
+      },
+      "memory": {},
+      "status": "ok"
+    },
+    {
+      "key": "small30",
+      "phase": "patch",
+      "batch_size": 320,
+      "physical_gpu": "2",
+      "steps": 5,
+      "synthetic_input": true,
+      "images_per_second": 968.2255630975053,
+      "peak_allocated_mib": 9285.087890625,
+      "peak_reserved_mib": 10282.0,
+      "free_before_mib": 10863.6875,
+      "free_after_mib": 529.6875,
+      "total_mib": 11019.5625,
+      "stats": {
+        "loss": 6.823908519744873,
+        "task_kd_loss": 6.823908519744873,
+        "memory_loss": 0.0,
+        "top1": 0.25,
+        "top5": 1.625
+      },
+      "memory": {},
+      "status": "insufficient_headroom"
+    }
+  ]
+}

@@ -1,16 +1,15 @@
 """
-§12 / §14 — Compact PS-ViT 모델.
+Compact PS-ViT 모델.
 
-search로 얻은 layer별 고정 keep_ids로 각 block에서 실제 token tensor 길이를 줄인다
-(§12.1: zero-mask만 적용하는 게 아니라 [B,N_in,D]→[B,N_out,D]로 실제 축소).
+search로 얻은 layer별 고정 keep_ids로 각 block에서 실제 token tensor 길이를 줄인다.
 
-토큰 선택 (SPEC §14.0 실측 반영):
-    select_mode="index_select" — 학습/평가(GPU). searched student와 수치 동일(§16.9).
+토큰 선택:
+    select_mode="index_select" — 학습/평가(GPU). searched student와 수치 동일.
     select_mode="matmul"       — NPU export. 상수 선택행렬 P@x (Gather 없음).
-NHWC 입력 옵션 — Mobilint calibration 파이프라인이 [B,224,224,3]을 넣기 때문(§14.0).
+NHWC 입력 옵션 — Mobilint calibration 파이프라인이 [B,224,224,3]을 넣기 때문.
 
 CLS는 항상 local index 0: keep_ids가 정렬되어 있고 CLS_ID=0이 모든 keep에 포함되므로
-가장 작은 값 → 첫 번째 위치. classifier는 x[:,0]을 계속 쓴다 (§12.3).
+가장 작은 값 → 첫 번째 위치. classifier는 x[:,0]을 계속 쓴다.
 """
 
 from __future__ import annotations
@@ -95,7 +94,7 @@ class CompactPSViT(nn.Module):
 
     @torch.no_grad()
     def bake_for_export(self, device, dtype=torch.float32) -> "CompactPSViT":
-        """모든 block을 matmul 선택 모드로 전환하고 상수 선택행렬 precompute (§14.0)."""
+        """모든 block을 matmul 선택 모드로 전환하고 상수 선택행렬 precompute."""
         for l, sb in enumerate(self.slim):
             sb.select_mode = "matmul"
             sb.bake_selection(self._active(l).to(device), self._keep(l).to(device), device, dtype)
@@ -105,19 +104,3 @@ class CompactPSViT(nn.Module):
     def token_schedule(self) -> List[int]:
         return [self.shp.num_global_tokens] + [int(self._keep(l).numel())
                                                for l in range(self.shp.num_blocks)]
-
-
-def build_compact_from_spec(arch_spec, state_dict: dict, device,
-                            select_mode: str = "index_select", nhwc_input: bool = False):
-    """architecture spec + full-model state_dict → CompactPSViT.
-
-    Patch Slimming은 weight shape을 안 바꾸므로 compact 모델 = 원본 timm 모델 weight +
-    keep mask. timm 모델을 만들어 state_dict를 로드한 뒤 mask로 감싼다.
-    """
-    import timm
-    num_classes = int(state_dict["head.weight"].shape[0])
-    model = timm.create_model(arch_spec.model_name, pretrained=False, num_classes=num_classes)
-    model.load_state_dict(state_dict, strict=True)
-    model.to(device).eval()
-    keep_ids = arch_spec.keep_ids_list(device=device)
-    return CompactPSViT(model, keep_ids, select_mode=select_mode, nhwc_input=nhwc_input).to(device)

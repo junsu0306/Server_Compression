@@ -74,7 +74,7 @@ def _reduce_ffn(mlp: nn.Module) -> int:
     # 제거된 파라미터 수 (secondary effect 포함)
     n_pruned  = n_old - n_new
     removed   = n_pruned * mlp.fc1.in_features   # fc1 weight 행
-    removed  += n_pruned                           # fc1 bias (있을 경우)
+    removed  += n_pruned if mlp.fc1.bias is not None else 0
     removed  += embed_dim * n_pruned               # fc2 weight 열
     return removed
 
@@ -87,19 +87,13 @@ def reduce_vit_model(model: nn.Module) -> nn.Module:
 
     Soft Pruning 학습 완료 후 호출. 동일 객체를 반환한다.
 
-    주의: EMA weights를 로드한 상태에서 호출해야 실제 성능이 보존된다.
-    raw network weight는 매 step 0으로 리셋되어 있어 Reducing만 하면 dead 모델이 된다.
+    정확히 0으로 마스킹된 채널만 제거한다. EMA 사용 시 먼저 raw mask를 이식한다.
     """
     total_removed = 0
     for i, block in enumerate(model.blocks):
         removed = _reduce_ffn(block.mlp)
         total_removed += removed
 
-    n_survived = sum(block.mlp.fc1.out_features for block in model.blocks)
-    n_total_mlp = sum(
-        block.mlp.fc1.out_features + (block.mlp.fc1.out_features - block.mlp.fc1.out_features)
-        for block in model.blocks
-    )
     print(f"[Reducer] removed {total_removed:,} params across {len(model.blocks)} blocks")
     return model
 

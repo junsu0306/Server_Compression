@@ -4,11 +4,16 @@ datasets/
 imagenet/
 
 # ── 체크포인트 / 모델 ──────────────────────────────────────────────────────────
-output/
+/output/*
+!/output/README.md
+!/output/release_final_20261006/
+# The release's own .gitignore permits only exact MANIFEST file paths.
 checkpoints/
 *.pt
 *.pth
 *.ckpt
+*.onnx
+*.log
 
 # ── WandB ─────────────────────────────────────────────────────────────────────
 wandb/
@@ -44,3 +49,8 @@ Thumbs.db
 .cache/
 .tmp/
 .deps/
+.tools/
+
+# Archived work is retained locally, not part of the final submission source.
+past/
+.ipynb_checkpoints/

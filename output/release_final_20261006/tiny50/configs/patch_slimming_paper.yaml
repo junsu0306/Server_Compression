@@ -1,0 +1,62 @@
+method: patch_slimming_static
+seed: 2022
+model:
+  name: vit_tiny_patch16_224
+  num_classes: 1000
+  reduced_checkpoint: /workspace/etri_iitp/JS/Server_Compression/output/final_20261006/tiny50/02_reduced/reduced.pt
+data_path: /workspace/etri_iitp/JS/Server_Compression/data/imagenet
+output_dir: /workspace/etri_iitp/JS/Server_Compression/output/final_20261006/tiny50/03_patch_slimming_paper
+calibration:
+  num_samples: 2048
+  batch_size: 32
+  seed: 2022
+  split: train
+  num_workers: 8
+score_data:
+  num_samples: 2048
+  batch_size: 32
+  seed: 2022
+  split: train
+  num_workers: 8
+reconstruction_train:
+  num_samples: 4096
+  batch_size: 32
+  seed: 2023
+  split: train
+  num_workers: 8
+reconstruction_eval:
+  num_samples: 2048
+  batch_size: 32
+  seed: 2024
+  split: train
+  num_workers: 8
+score:
+  mode: paper_path_energy_dp
+search:
+  epsilon: 0.02
+  error_metric: sample_relative_frobenius_sq_mean
+  search_step: 10
+  max_search_iters: 10000
+  score_max_batches: null
+block_finetune:
+  optimizer: adamw
+  learning_rate: 1.0e-05
+  weight_decay: 0.0
+  epochs: 3
+  grad_clip_norm: 1.0
+final_finetune:
+  epochs: 30
+  lr: 2.0e-05
+  weight_decay: 0.05
+  batch_size: 512
+  warmup_epochs: 3
+  num_workers: 8
+  wandb: true
+  wandb_project: vit-final-target-memory-20261006
+  wandb_run_name: tiny50__target_memory__paper_rel002__finetune30
+  wandb_run_id: final-20261006-tiny50-patch-finetune
+wandb:
+  enabled: true
+  project: vit-final-target-memory-20261006
+  run_name: tiny50__target_memory__paper_rel002__search
+  run_id: final-20261006-tiny50-patch-search

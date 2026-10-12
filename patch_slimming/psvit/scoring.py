@@ -1,16 +1,16 @@
 """
-§7 — Significance score (path-energy dynamic programming).
+Significance score (path-energy dynamic programming).
 
-논문 Theorem 1 (SPEC §7.1):
+논문 Theorem 1:
     s_{t,i} = Σ_h || A_t^h[:,i] U_t^h[i,:] ||_F^2
     A_t^h = Π_{l=t+1..L} diag(m_l) P_l^h      (downstream influence)
     U_t^h = P_t^h |Z_{t-1}|                    (target layer feature energy)
 
-논문은 head-path 집계 구현을 안 준다 (SPEC §7.2). [DECISION]: head-path energy를
+논문은 head-path 집계 구현을 안 준다. head-path energy를
 동적 계획법으로 계산하고, 작은 case에서 brute-force head-path 열거와 일치함을
-검증한다 (SPEC §7.6, §16.5). 이 test 통과 전에는 전체 search를 시작하지 않는다.
+검증한다. 이 test 통과 전에는 전체 search를 시작하지 않는다.
 
-핵심 DP (SPEC §7.5):
+핵심 DP:
     G = I_N
     for P in reversed(downstream P_k [B,H,N,N]):
         G = (1/H) Σ_h P_h^T G P_h
@@ -112,7 +112,7 @@ def compute_sample_scores(
     target_attn_global: Tensor,      # [B,H,N,N]
     downstream_globals: List[Tensor],  # list of [B,H,N,N]
 ) -> Tensor:                         # [B,N]
-    """SPEC §7.5 그대로."""
+    """그대로."""
     downstream_energy = _downstream_energy_dp(downstream_globals)     # [B,N]
     U = torch.matmul(target_attn_global, z_prev.abs().unsqueeze(1))   # [B,H,N,D]
     current_energy = U.square().sum(dim=-1).mean(dim=1)               # [B,N]
@@ -127,7 +127,7 @@ def estimate_mean_scores(model, target_layer: int, keep_ids: List[Tensor],
                          log_every: int = 0) -> Tensor:
     """calibration subset 전체에 대한 patch significance 평균 score [N] (float64 누적).
 
-    SPEC §7.7: NaN/Inf 즉시 오류, eval mode. CLS 제외/keep 제외는 candidate ranking에서.
+    NaN/Inf 즉시 오류, eval mode. CLS 제외/keep 제외는 candidate ranking에서.
     """
     model.eval()
     shp = get_shape(model)
@@ -154,7 +154,7 @@ def estimate_mean_scores(model, target_layer: int, keep_ids: List[Tensor],
 # ── §7.6 brute-force 대조 (test 전용) ──────────────────────────────────────────
 
 def bruteforce_downstream_energy(downstream: List[Tensor]) -> Tensor:
-    """head-path를 명시적으로 열거해 G_ii 계산 (DP 검증용, SPEC §7.6, §16.5).
+    """head-path를 명시적으로 열거해 G_ii 계산 (DP 검증용, ).
 
     DP: G_k-1 = (1/H) Σ_h P_k^h,T G_k P_k^h.  이를 head 인덱스로 완전 전개.
     m개 downstream layer, H heads → H^m 개 head-sequence. 작은 case에서만 쓴다.

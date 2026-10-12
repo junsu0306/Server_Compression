@@ -1,21 +1,7 @@
-"""
-Soft Pruning 완료 체크포인트 → Dense 모델 생성 CLI
+"""Physically remove masked FFN channels and save a reloadable dense checkpoint.
 
-사용법:
-    python pruning/reduce.py \\
-        --model vit_small_patch16_224 \\
-        --checkpoint ./output/vit_small_prune20/checkpoint_best.pt \\
-        --output     ./output/vit_small_prune20/reduced.pt
-
-reduced.pt 로드 방법:
-    import timm, torch
-    from pruning.vit_reducing import apply_reduced_config
-
-    ckpt  = torch.load("reduced.pt", map_location="cpu")
-    model = timm.create_model(ckpt["model_name"], pretrained=False)
-    apply_reduced_config(model, ckpt["mlp_dims"])   # 구조 축소
-    model.load_state_dict(ckpt["state_dict"])        # 가중치 복원
-    model.eval()
+EMA weights retain the learned surviving channels; the raw model supplies the
+exact zero mask. See docs/METHODOLOGY.md for the complete pipeline.
 """
 
 from __future__ import annotations

@@ -1,0 +1,3734 @@
+{
+  "model": "vit_tiny_patch16_224",
+  "device": "cuda:0",
+  "gpu": "NVIDIA GeForce RTX 2080 Ti",
+  "torch_version": "2.6.0+cu118",
+  "timm_version": "1.0.25",
+  "dtype": "float32",
+  "input_shape": [
+    1,
+    3,
+    224,
+    224
+  ],
+  "parameters": 2862256,
+  "warmups": 10,
+  "runs": 50,
+  "source": "/workspace/etri_iitp/JS/Server_Compression/output/final_20261006/tiny50/03_patch_slimming_paper/compact_finetuned_best.pt",
+  "architecture": "/workspace/etri_iitp/JS/Server_Compression/output/final_20261006/tiny50/03_patch_slimming_paper/architecture.json",
+  "pretrained": false,
+  "input_sha256": null,
+  "token_schedule": [
+    197,
+    121,
+    121,
+    121,
+    121,
+    121,
+    111,
+    111,
+    111,
+    111,
+    111,
+    111,
+    1
+  ],
+  "mlp_dims": [
+    298,
+    181,
+    80,
+    117,
+    121,
+    147,
+    133,
+    109,
+    85,
+    104,
+    175,
+    250
+  ],
+  "parameter_bytes": 11449024,
+  "buffer_bytes": 21920,
+  "resident_allocated_bytes": 21259264,
+  "peak_allocated_bytes": 23997952,
+  "peak_reserved_bytes": 37748736,
+  "transient_peak_bytes": 2738688,
+  "latency_mean_ms": 20.454168114811182,
+  "process_memory": {
+    "sample_count": 225,
+    "rss_start_bytes": 555089920,
+    "rss_peak_bytes": 3395731456,
+    "uss_peak_bytes": 2648956928,
+    "pss_peak_bytes": 2955587584,
+    "system_used_peak_bytes": 61690712064,
+    "system_available_min_bytes": 207348928512
+  },
+  "activation": {
+    "module_output_sum_bytes": 15304336,
+    "note": "sum of produced module outputs in one separate forward; not live peak",
+    "modules": [
+      {
+        "name": "model.patch_embed.proj",
+        "type": "Conv2d",
+        "output": {
+          "bytes": 150528,
+          "numel": 37632,
+          "shapes": [
+            [
+              1,
+              192,
+              14,
+              14
+            ]
+          ],
+          "dtypes": [
+            "float32"
+          ]
+        }
+      },
+      {
+        "name": "model.patch_embed.norm",
+        "type": "Identity",
+        "output": {
+          "bytes": 150528,
+          "numel": 37632,
+          "shapes": [
+            [
+              1,
+              196,
+              192
+            ]
+          ],
+          "dtypes": [
+            "float32"
+          ]
+        }
+      },
+      {
+        "name": "model.pos_drop",
+        "type": "Dropout",
+        "output": {
+          "bytes": 151296,
+          "numel": 37824,
+          "shapes": [
+            [
+              1,
+              197,
+              192
+            ]
+          ],
+          "dtypes": [
+            "float32"
+          ]
+        }
+      },
+      {
+        "name": "model.norm_pre",
+        "type": "Identity",
+        "output": {
+          "bytes": 151296,
+          "numel": 37824,
+          "shapes": [
+            [
+              1,
+              197,
+              192
+            ]
+          ],
+          "dtypes": [
+            "float32"
+          ]
+        }
+      },
+      {
+        "name": "model.blocks.0.norm1",
+        "type": "LayerNorm",
+        "output": {
+          "bytes": 151296,
+          "numel": 37824,
+          "shapes": [
+            [
+              1,
+              197,
+              192
+            ]
+          ],
+          "dtypes": [
+            "float32"
+          ]
+        }
+      },
+      {
+        "name": "model.blocks.0.attn.attn_drop",
+        "type": "Dropout",
+        "output": {
+          "bytes": 286044,
+          "numel": 71511,
+          "shapes": [
+            [
+              1,
+              3,
+              121,
+              197
+            ]
+          ],
+          "dtypes": [
+            "float32"
+          ]
+        }
+      },
+      {
+        "name": "model.blocks.0.attn.proj",
+        "type": "Linear",
+        "output": {
+          "bytes": 92928,
+          "numel": 23232,
+          "shapes": [
+            [
+              1,
+              121,
+              192
+            ]
+          ],
+          "dtypes": [
+            "float32"
+          ]
+        }
+      },
+      {
+        "name": "model.blocks.0.attn.proj_drop",
+        "type": "Dropout",
+        "output": {
+          "bytes": 92928,
+          "numel": 23232,
+          "shapes": [
+            [
+              1,
+              121,
+              192
+            ]
+          ],
+          "dtypes": [
+            "float32"
+          ]
+        }
+      },
+      {
+        "name": "model.blocks.0.ls1",
+        "type": "Identity",
+        "output": {
+          "bytes": 92928,
+          "numel": 23232,
+          "shapes": [
+            [
+              1,
+              121,
+              192
+            ]
+          ],
+          "dtypes": [
+            "float32"
+          ]
+        }
+      },
+      {
+        "name": "model.blocks.0.drop_path1",
+        "type": "Identity",
+        "output": {
+          "bytes": 92928,
+          "numel": 23232,
+          "shapes": [
+            [
+              1,
+              121,
+              192
+            ]
+          ],
+          "dtypes": [
+            "float32"
+          ]
+        }
+      },
+      {
+        "name": "model.blocks.0.norm2",
+        "type": "LayerNorm",
+        "output": {
+          "bytes": 92928,
+          "numel": 23232,
+          "shapes": [
+            [
+              1,
+              121,
+              192
+            ]
+          ],
+          "dtypes": [
+            "float32"
+          ]
+        }
+      },
+      {
+        "name": "model.blocks.0.mlp.fc1",
+        "type": "Linear",
+        "output": {
+          "bytes": 144232,
+          "numel": 36058,
+          "shapes": [
+            [
+              1,
+              121,
+              298
+            ]
+          ],
+          "dtypes": [
+            "float32"
+          ]
+        }
+      },
+      {
+        "name": "model.blocks.0.mlp.act",
+        "type": "GELU",
+        "output": {
+          "bytes": 144232,
+          "numel": 36058,
+          "shapes": [
+            [
+              1,
+              121,
+              298
+            ]
+          ],
+          "dtypes": [
+            "float32"
+          ]
+        }
+      },
+      {
+        "name": "model.blocks.0.mlp.drop1",
+        "type": "Dropout",
+        "output": {
+          "bytes": 144232,
+          "numel": 36058,
+          "shapes": [
+            [
+              1,
+              121,
+              298
+            ]
+          ],
+          "dtypes": [
+            "float32"
+          ]
+        }
+      },
+      {
+        "name": "model.blocks.0.mlp.norm",
+        "type": "Identity",
+        "output": {
+          "bytes": 144232,
+          "numel": 36058,
+          "shapes": [
+            [
+              1,
+              121,
+              298
+            ]
+          ],
+          "dtypes": [
+            "float32"
+          ]
+        }
+      },
+      {
+        "name": "model.blocks.0.mlp.fc2",
+        "type": "Linear",
+        "output": {
+          "bytes": 92928,
+          "numel": 23232,
+          "shapes": [
+            [
+              1,
+              121,
+              192
+            ]
+          ],
+          "dtypes": [
+            "float32"
+          ]
+        }
+      },
+      {
+        "name": "model.blocks.0.mlp.drop2",
+        "type": "Dropout",
+        "output": {
+          "bytes": 92928,
+          "numel": 23232,
+          "shapes": [
+            [
+              1,
+              121,
+              192
+            ]
+          ],
+          "dtypes": [
+            "float32"
+          ]
+        }
+      },
+      {
+        "name": "model.blocks.0.ls2",
+        "type": "Identity",
+        "output": {
+          "bytes": 92928,
+          "numel": 23232,
+          "shapes": [
+            [
+              1,
+              121,
+              192
+            ]
+          ],
+          "dtypes": [
+            "float32"
+          ]
+        }
+      },
+      {
+        "name": "model.blocks.0.drop_path2",
+        "type": "Identity",
+        "output": {
+          "bytes": 92928,
+          "numel": 23232,
+          "shapes": [
+            [
+              1,
+              121,
+              192
+            ]
+          ],
+          "dtypes": [
+            "float32"
+          ]
+        }
+      },
+      {
+        "name": "model.blocks.1.norm1",
+        "type": "LayerNorm",
+        "output": {
+          "bytes": 92928,
+          "numel": 23232,
+          "shapes": [
+            [
+              1,
+              121,
+              192
+            ]
+          ],
+          "dtypes": [
+            "float32"
+          ]
+        }
+      },
+      {
+        "name": "model.blocks.1.attn.attn_drop",
+        "type": "Dropout",
+        "output": {
+          "bytes": 175692,
+          "numel": 43923,
+          "shapes": [
+            [
+              1,
+              3,
+              121,
+              121
+            ]
+          ],
+          "dtypes": [
+            "float32"
+          ]
+        }
+      },
+      {
+        "name": "model.blocks.1.attn.proj",
+        "type": "Linear",
+        "output": {
+          "bytes": 92928,
+          "numel": 23232,
+          "shapes": [
+            [
+              1,
+              121,
+              192
+            ]
+          ],
+          "dtypes": [
+            "float32"
+          ]
+        }
+      },
+      {
+        "name": "model.blocks.1.attn.proj_drop",
+        "type": "Dropout",
+        "output": {
+          "bytes": 92928,
+          "numel": 23232,
+          "shapes": [
+            [
+              1,
+              121,
+              192
+            ]
+          ],
+          "dtypes": [
+            "float32"
+          ]
+        }
+      },
+      {
+        "name": "model.blocks.1.ls1",
+        "type": "Identity",
+        "output": {
+          "bytes": 92928,
+          "numel": 23232,
+          "shapes": [
+            [
+              1,
+              121,
+              192
+            ]
+          ],
+          "dtypes": [
+            "float32"
+          ]
+        }
+      },
+      {
+        "name": "model.blocks.1.drop_path1",
+        "type": "Identity",
+        "output": {
+          "bytes": 92928,
+          "numel": 23232,
+          "shapes": [
+            [
+              1,
+              121,
+              192
+            ]
+          ],
+          "dtypes": [
+            "float32"
+          ]
+        }
+      },
+      {
+        "name": "model.blocks.1.norm2",
+        "type": "LayerNorm",
+        "output": {
+          "bytes": 92928,
+          "numel": 23232,
+          "shapes": [
+            [
+              1,
+              121,
+              192
+            ]
+          ],
+          "dtypes": [
+            "float32"
+          ]
+        }
+      },
+      {
+        "name": "model.blocks.1.mlp.fc1",
+        "type": "Linear",
+        "output": {
+          "bytes": 87604,
+          "numel": 21901,
+          "shapes": [
+            [
+              1,
+              121,
+              181
+            ]
+          ],
+          "dtypes": [
+            "float32"
+          ]
+        }
+      },
+      {
+        "name": "model.blocks.1.mlp.act",
+        "type": "GELU",
+        "output": {
+          "bytes": 87604,
+          "numel": 21901,
+          "shapes": [
+            [
+              1,
+              121,
+              181
+            ]
+          ],
+          "dtypes": [
+            "float32"
+          ]
+        }
+      },
+      {
+        "name": "model.blocks.1.mlp.drop1",
+        "type": "Dropout",
+        "output": {
+          "bytes": 87604,
+          "numel": 21901,
+          "shapes": [
+            [
+              1,
+              121,
+              181
+            ]
+          ],
+          "dtypes": [
+            "float32"
+          ]
+        }
+      },
+      {
+        "name": "model.blocks.1.mlp.norm",
+        "type": "Identity",
+        "output": {
+          "bytes": 87604,
+          "numel": 21901,
+          "shapes": [
+            [
+              1,
+              121,
+              181
+            ]
+          ],
+          "dtypes": [
+            "float32"
+          ]
+        }
+      },
+      {
+        "name": "model.blocks.1.mlp.fc2",
+        "type": "Linear",
+        "output": {
+          "bytes": 92928,
+          "numel": 23232,
+          "shapes": [
+            [
+              1,
+              121,
+              192
+            ]
+          ],
+          "dtypes": [
+            "float32"
+          ]
+        }
+      },
+      {
+        "name": "model.blocks.1.mlp.drop2",
+        "type": "Dropout",
+        "output": {
+          "bytes": 92928,
+          "numel": 23232,
+          "shapes": [
+            [
+              1,
+              121,
+              192
+            ]
+          ],
+          "dtypes": [
+            "float32"
+          ]
+        }
+      },
+      {
+        "name": "model.blocks.1.ls2",
+        "type": "Identity",
+        "output": {
+          "bytes": 92928,
+          "numel": 23232,
+          "shapes": [
+            [
+              1,
+              121,
+              192
+            ]
+          ],
+          "dtypes": [
+            "float32"
+          ]
+        }
+      },
+      {
+        "name": "model.blocks.1.drop_path2",
+        "type": "Identity",
+        "output": {
+          "bytes": 92928,
+          "numel": 23232,
+          "shapes": [
+            [
+              1,
+              121,
+              192
+            ]
+          ],
+          "dtypes": [
+            "float32"
+          ]
+        }
+      },
+      {
+        "name": "model.blocks.2.norm1",
+        "type": "LayerNorm",
+        "output": {
+          "bytes": 92928,
+          "numel": 23232,
+          "shapes": [
+            [
+              1,
+              121,
+              192
+            ]
+          ],
+          "dtypes": [
+            "float32"
+          ]
+        }
+      },
+      {
+        "name": "model.blocks.2.attn.attn_drop",
+        "type": "Dropout",
+        "output": {
+          "bytes": 175692,
+          "numel": 43923,
+          "shapes": [
+            [
+              1,
+              3,
+              121,
+              121
+            ]
+          ],
+          "dtypes": [
+            "float32"
+          ]
+        }
+      },
+      {
+        "name": "model.blocks.2.attn.proj",
+        "type": "Linear",
+        "output": {
+          "bytes": 92928,
+          "numel": 23232,
+          "shapes": [
+            [
+              1,
+              121,
+              192
+            ]
+          ],
+          "dtypes": [
+            "float32"
+          ]
+        }
+      },
+      {
+        "name": "model.blocks.2.attn.proj_drop",
+        "type": "Dropout",
+        "output": {
+          "bytes": 92928,
+          "numel": 23232,
+          "shapes": [
+            [
+              1,
+              121,
+              192
+            ]
+          ],
+          "dtypes": [
+            "float32"
+          ]
+        }
+      },
+      {
+        "name": "model.blocks.2.ls1",
+        "type": "Identity",
+        "output": {
+          "bytes": 92928,
+          "numel": 23232,
+          "shapes": [
+            [
+              1,
+              121,
+              192
+            ]
+          ],
+          "dtypes": [
+            "float32"
+          ]
+        }
+      },
+      {
+        "name": "model.blocks.2.drop_path1",
+        "type": "Identity",
+        "output": {
+          "bytes": 92928,
+          "numel": 23232,
+          "shapes": [
+            [
+              1,
+              121,
+              192
+            ]
+          ],
+          "dtypes": [
+            "float32"
+          ]
+        }
+      },
+      {
+        "name": "model.blocks.2.norm2",
+        "type": "LayerNorm",
+        "output": {
+          "bytes": 92928,
+          "numel": 23232,
+          "shapes": [
+            [
+              1,
+              121,
+              192
+            ]
+          ],
+          "dtypes": [
+            "float32"
+          ]
+        }
+      },
+      {
+        "name": "model.blocks.2.mlp.fc1",
+        "type": "Linear",
+        "output": {
+          "bytes": 38720,
+          "numel": 9680,
+          "shapes": [
+            [
+              1,
+              121,
+              80
+            ]
+          ],
+          "dtypes": [
+            "float32"
+          ]
+        }
+      },
+      {
+        "name": "model.blocks.2.mlp.act",
+        "type": "GELU",
+        "output": {
+          "bytes": 38720,
+          "numel": 9680,
+          "shapes": [
+            [
+              1,
+              121,
+              80
+            ]
+          ],
+          "dtypes": [
+            "float32"
+          ]
+        }
+      },
+      {
+        "name": "model.blocks.2.mlp.drop1",
+        "type": "Dropout",
+        "output": {
+          "bytes": 38720,
+          "numel": 9680,
+          "shapes": [
+            [
+              1,
+              121,
+              80
+            ]
+          ],
+          "dtypes": [
+            "float32"
+          ]
+        }
+      },
+      {
+        "name": "model.blocks.2.mlp.norm",
+        "type": "Identity",
+        "output": {
+          "bytes": 38720,
+          "numel": 9680,
+          "shapes": [
+            [
+              1,
+              121,
+              80
+            ]
+          ],
+          "dtypes": [
+            "float32"
+          ]
+        }
+      },
+      {
+        "name": "model.blocks.2.mlp.fc2",
+        "type": "Linear",
+        "output": {
+          "bytes": 92928,
+          "numel": 23232,
+          "shapes": [
+            [
+              1,
+              121,
+              192
+            ]
+          ],
+          "dtypes": [
+            "float32"
+          ]
+        }
+      },
+      {
+        "name": "model.blocks.2.mlp.drop2",
+        "type": "Dropout",
+        "output": {
+          "bytes": 92928,
+          "numel": 23232,
+          "shapes": [
+            [
+              1,
+              121,
+              192
+            ]
+          ],
+          "dtypes": [
+            "float32"
+          ]
+        }
+      },
+      {
+        "name": "model.blocks.2.ls2",
+        "type": "Identity",
+        "output": {
+          "bytes": 92928,
+          "numel": 23232,
+          "shapes": [
+            [
+              1,
+              121,
+              192
+            ]
+          ],
+          "dtypes": [
+            "float32"
+          ]
+        }
+      },
+      {
+        "name": "model.blocks.2.drop_path2",
+        "type": "Identity",
+        "output": {
+          "bytes": 92928,
+          "numel": 23232,
+          "shapes": [
+            [
+              1,
+              121,
+              192
+            ]
+          ],
+          "dtypes": [
+            "float32"
+          ]
+        }
+      },
+      {
+        "name": "model.blocks.3.norm1",
+        "type": "LayerNorm",
+        "output": {
+          "bytes": 92928,
+          "numel": 23232,
+          "shapes": [
+            [
+              1,
+              121,
+              192
+            ]
+          ],
+          "dtypes": [
+            "float32"
+          ]
+        }
+      },
+      {
+        "name": "model.blocks.3.attn.attn_drop",
+        "type": "Dropout",
+        "output": {
+          "bytes": 175692,
+          "numel": 43923,
+          "shapes": [
+            [
+              1,
+              3,
+              121,
+              121
+            ]
+          ],
+          "dtypes": [
+            "float32"
+          ]
+        }
+      },
+      {
+        "name": "model.blocks.3.attn.proj",
+        "type": "Linear",
+        "output": {
+          "bytes": 92928,
+          "numel": 23232,
+          "shapes": [
+            [
+              1,
+              121,
+              192
+            ]
+          ],
+          "dtypes": [
+            "float32"
+          ]
+        }
+      },
+      {
+        "name": "model.blocks.3.attn.proj_drop",
+        "type": "Dropout",
+        "output": {
+          "bytes": 92928,
+          "numel": 23232,
+          "shapes": [
+            [
+              1,
+              121,
+              192
+            ]
+          ],
+          "dtypes": [
+            "float32"
+          ]
+        }
+      },
+      {
+        "name": "model.blocks.3.ls1",
+        "type": "Identity",
+        "output": {
+          "bytes": 92928,
+          "numel": 23232,
+          "shapes": [
+            [
+              1,
+              121,
+              192
+            ]
+          ],
+          "dtypes": [
+            "float32"
+          ]
+        }
+      },
+      {
+        "name": "model.blocks.3.drop_path1",
+        "type": "Identity",
+        "output": {
+          "bytes": 92928,
+          "numel": 23232,
+          "shapes": [
+            [
+              1,
+              121,
+              192
+            ]
+          ],
+          "dtypes": [
+            "float32"
+          ]
+        }
+      },
+      {
+        "name": "model.blocks.3.norm2",
+        "type": "LayerNorm",
+        "output": {
+          "bytes": 92928,
+          "numel": 23232,
+          "shapes": [
+            [
+              1,
+              121,
+              192
+            ]
+          ],
+          "dtypes": [
+            "float32"
+          ]
+        }
+      },
+      {
+        "name": "model.blocks.3.mlp.fc1",
+        "type": "Linear",
+        "output": {
+          "bytes": 56628,
+          "numel": 14157,
+          "shapes": [
+            [
+              1,
+              121,
+              117
+            ]
+          ],
+          "dtypes": [
+            "float32"
+          ]
+        }
+      },
+      {
+        "name": "model.blocks.3.mlp.act",
+        "type": "GELU",
+        "output": {
+          "bytes": 56628,
+          "numel": 14157,
+          "shapes": [
+            [
+              1,
+              121,
+              117
+            ]
+          ],
+          "dtypes": [
+            "float32"
+          ]
+        }
+      },
+      {
+        "name": "model.blocks.3.mlp.drop1",
+        "type": "Dropout",
+        "output": {
+          "bytes": 56628,
+          "numel": 14157,
+          "shapes": [
+            [
+              1,
+              121,
+              117
+            ]
+          ],
+          "dtypes": [
+            "float32"
+          ]
+        }
+      },
+      {
+        "name": "model.blocks.3.mlp.norm",
+        "type": "Identity",
+        "output": {
+          "bytes": 56628,
+          "numel": 14157,
+          "shapes": [
+            [
+              1,
+              121,
+              117
+            ]
+          ],
+          "dtypes": [
+            "float32"
+          ]
+        }
+      },
+      {
+        "name": "model.blocks.3.mlp.fc2",
+        "type": "Linear",
+        "output": {
+          "bytes": 92928,
+          "numel": 23232,
+          "shapes": [
+            [
+              1,
+              121,
+              192
+            ]
+          ],
+          "dtypes": [
+            "float32"
+          ]
+        }
+      },
+      {
+        "name": "model.blocks.3.mlp.drop2",
+        "type": "Dropout",
+        "output": {
+          "bytes": 92928,
+          "numel": 23232,
+          "shapes": [
+            [
+              1,
+              121,
+              192
+            ]
+          ],
+          "dtypes": [
+            "float32"
+          ]
+        }
+      },
+      {
+        "name": "model.blocks.3.ls2",
+        "type": "Identity",
+        "output": {
+          "bytes": 92928,
+          "numel": 23232,
+          "shapes": [
+            [
+              1,
+              121,
+              192
+            ]
+          ],
+          "dtypes": [
+            "float32"
+          ]
+        }
+      },
+      {
+        "name": "model.blocks.3.drop_path2",
+        "type": "Identity",
+        "output": {
+          "bytes": 92928,
+          "numel": 23232,
+          "shapes": [
+            [
+              1,
+              121,
+              192
+            ]
+          ],
+          "dtypes": [
+            "float32"
+          ]
+        }
+      },
+      {
+        "name": "model.blocks.4.norm1",
+        "type": "LayerNorm",
+        "output": {
+          "bytes": 92928,
+          "numel": 23232,
+          "shapes": [
+            [
+              1,
+              121,
+              192
+            ]
+          ],
+          "dtypes": [
+            "float32"
+          ]
+        }
+      },
+      {
+        "name": "model.blocks.4.attn.attn_drop",
+        "type": "Dropout",
+        "output": {
+          "bytes": 175692,
+          "numel": 43923,
+          "shapes": [
+            [
+              1,
+              3,
+              121,
+              121
+            ]
+          ],
+          "dtypes": [
+            "float32"
+          ]
+        }
+      },
+      {
+        "name": "model.blocks.4.attn.proj",
+        "type": "Linear",
+        "output": {
+          "bytes": 92928,
+          "numel": 23232,
+          "shapes": [
+            [
+              1,
+              121,
+              192
+            ]
+          ],
+          "dtypes": [
+            "float32"
+          ]
+        }
+      },
+      {
+        "name": "model.blocks.4.attn.proj_drop",
+        "type": "Dropout",
+        "output": {
+          "bytes": 92928,
+          "numel": 23232,
+          "shapes": [
+            [
+              1,
+              121,
+              192
+            ]
+          ],
+          "dtypes": [
+            "float32"
+          ]
+        }
+      },
+      {
+        "name": "model.blocks.4.ls1",
+        "type": "Identity",
+        "output": {
+          "bytes": 92928,
+          "numel": 23232,
+          "shapes": [
+            [
+              1,
+              121,
+              192
+            ]
+          ],
+          "dtypes": [
+            "float32"
+          ]
+        }
+      },
+      {
+        "name": "model.blocks.4.drop_path1",
+        "type": "Identity",
+        "output": {
+          "bytes": 92928,
+          "numel": 23232,
+          "shapes": [
+            [
+              1,
+              121,
+              192
+            ]
+          ],
+          "dtypes": [
+            "float32"
+          ]
+        }
+      },
+      {
+        "name": "model.blocks.4.norm2",
+        "type": "LayerNorm",
+        "output": {
+          "bytes": 92928,
+          "numel": 23232,
+          "shapes": [
+            [
+              1,
+              121,
+              192
+            ]
+          ],
+          "dtypes": [
+            "float32"
+          ]
+        }
+      },
+      {
+        "name": "model.blocks.4.mlp.fc1",
+        "type": "Linear",
+        "output": {
+          "bytes": 58564,
+          "numel": 14641,
+          "shapes": [
+            [
+              1,
+              121,
+              121
+            ]
+          ],
+          "dtypes": [
+            "float32"
+          ]
+        }
+      },
+      {
+        "name": "model.blocks.4.mlp.act",
+        "type": "GELU",
+        "output": {
+          "bytes": 58564,
+          "numel": 14641,
+          "shapes": [
+            [
+              1,
+              121,
+              121
+            ]
+          ],
+          "dtypes": [
+            "float32"
+          ]
+        }
+      },
+      {
+        "name": "model.blocks.4.mlp.drop1",
+        "type": "Dropout",
+        "output": {
+          "bytes": 58564,
+          "numel": 14641,
+          "shapes": [
+            [
+              1,
+              121,
+              121
+            ]
+          ],
+          "dtypes": [
+            "float32"
+          ]
+        }
+      },
+      {
+        "name": "model.blocks.4.mlp.norm",
+        "type": "Identity",
+        "output": {
+          "bytes": 58564,
+          "numel": 14641,
+          "shapes": [
+            [
+              1,
+              121,
+              121
+            ]
+          ],
+          "dtypes": [
+            "float32"
+          ]
+        }
+      },
+      {
+        "name": "model.blocks.4.mlp.fc2",
+        "type": "Linear",
+        "output": {
+          "bytes": 92928,
+          "numel": 23232,
+          "shapes": [
+            [
+              1,
+              121,
+              192
+            ]
+          ],
+          "dtypes": [
+            "float32"
+          ]
+        }
+      },
+      {
+        "name": "model.blocks.4.mlp.drop2",
+        "type": "Dropout",
+        "output": {
+          "bytes": 92928,
+          "numel": 23232,
+          "shapes": [
+            [
+              1,
+              121,
+              192
+            ]
+          ],
+          "dtypes": [
+            "float32"
+          ]
+        }
+      },
+      {
+        "name": "model.blocks.4.ls2",
+        "type": "Identity",
+        "output": {
+          "bytes": 92928,
+          "numel": 23232,
+          "shapes": [
+            [
+              1,
+              121,
+              192
+            ]
+          ],
+          "dtypes": [
+            "float32"
+          ]
+        }
+      },
+      {
+        "name": "model.blocks.4.drop_path2",
+        "type": "Identity",
+        "output": {
+          "bytes": 92928,
+          "numel": 23232,
+          "shapes": [
+            [
+              1,
+              121,
+              192
+            ]
+          ],
+          "dtypes": [
+            "float32"
+          ]
+        }
+      },
+      {
+        "name": "model.blocks.5.norm1",
+        "type": "LayerNorm",
+        "output": {
+          "bytes": 92928,
+          "numel": 23232,
+          "shapes": [
+            [
+              1,
+              121,
+              192
+            ]
+          ],
+          "dtypes": [
+            "float32"
+          ]
+        }
+      },
+      {
+        "name": "model.blocks.5.attn.attn_drop",
+        "type": "Dropout",
+        "output": {
+          "bytes": 161172,
+          "numel": 40293,
+          "shapes": [
+            [
+              1,
+              3,
+              111,
+              121
+            ]
+          ],
+          "dtypes": [
+            "float32"
+          ]
+        }
+      },
+      {
+        "name": "model.blocks.5.attn.proj",
+        "type": "Linear",
+        "output": {
+          "bytes": 85248,
+          "numel": 21312,
+          "shapes": [
+            [
+              1,
+              111,
+              192
+            ]
+          ],
+          "dtypes": [
+            "float32"
+          ]
+        }
+      },
+      {
+        "name": "model.blocks.5.attn.proj_drop",
+        "type": "Dropout",
+        "output": {
+          "bytes": 85248,
+          "numel": 21312,
+          "shapes": [
+            [
+              1,
+              111,
+              192
+            ]
+          ],
+          "dtypes": [
+            "float32"
+          ]
+        }
+      },
+      {
+        "name": "model.blocks.5.ls1",
+        "type": "Identity",
+        "output": {
+          "bytes": 85248,
+          "numel": 21312,
+          "shapes": [
+            [
+              1,
+              111,
+              192
+            ]
+          ],
+          "dtypes": [
+            "float32"
+          ]
+        }
+      },
+      {
+        "name": "model.blocks.5.drop_path1",
+        "type": "Identity",
+        "output": {
+          "bytes": 85248,
+          "numel": 21312,
+          "shapes": [
+            [
+              1,
+              111,
+              192
+            ]
+          ],
+          "dtypes": [
+            "float32"
+          ]
+        }
+      },
+      {
+        "name": "model.blocks.5.norm2",
+        "type": "LayerNorm",
+        "output": {
+          "bytes": 85248,
+          "numel": 21312,
+          "shapes": [
+            [
+              1,
+              111,
+              192
+            ]
+          ],
+          "dtypes": [
+            "float32"
+          ]
+        }
+      },
+      {
+        "name": "model.blocks.5.mlp.fc1",
+        "type": "Linear",
+        "output": {
+          "bytes": 65268,
+          "numel": 16317,
+          "shapes": [
+            [
+              1,
+              111,
+              147
+            ]
+          ],
+          "dtypes": [
+            "float32"
+          ]
+        }
+      },
+      {
+        "name": "model.blocks.5.mlp.act",
+        "type": "GELU",
+        "output": {
+          "bytes": 65268,
+          "numel": 16317,
+          "shapes": [
+            [
+              1,
+              111,
+              147
+            ]
+          ],
+          "dtypes": [
+            "float32"
+          ]
+        }
+      },
+      {
+        "name": "model.blocks.5.mlp.drop1",
+        "type": "Dropout",
+        "output": {
+          "bytes": 65268,
+          "numel": 16317,
+          "shapes": [
+            [
+              1,
+              111,
+              147
+            ]
+          ],
+          "dtypes": [
+            "float32"
+          ]
+        }
+      },
+      {
+        "name": "model.blocks.5.mlp.norm",
+        "type": "Identity",
+        "output": {
+          "bytes": 65268,
+          "numel": 16317,
+          "shapes": [
+            [
+              1,
+              111,
+              147
+            ]
+          ],
+          "dtypes": [
+            "float32"
+          ]
+        }
+      },
+      {
+        "name": "model.blocks.5.mlp.fc2",
+        "type": "Linear",
+        "output": {
+          "bytes": 85248,
+          "numel": 21312,
+          "shapes": [
+            [
+              1,
+              111,
+              192
+            ]
+          ],
+          "dtypes": [
+            "float32"
+          ]
+        }
+      },
+      {
+        "name": "model.blocks.5.mlp.drop2",
+        "type": "Dropout",
+        "output": {
+          "bytes": 85248,
+          "numel": 21312,
+          "shapes": [
+            [
+              1,
+              111,
+              192
+            ]
+          ],
+          "dtypes": [
+            "float32"
+          ]
+        }
+      },
+      {
+        "name": "model.blocks.5.ls2",
+        "type": "Identity",
+        "output": {
+          "bytes": 85248,
+          "numel": 21312,
+          "shapes": [
+            [
+              1,
+              111,
+              192
+            ]
+          ],
+          "dtypes": [
+            "float32"
+          ]
+        }
+      },
+      {
+        "name": "model.blocks.5.drop_path2",
+        "type": "Identity",
+        "output": {
+          "bytes": 85248,
+          "numel": 21312,
+          "shapes": [
+            [
+              1,
+              111,
+              192
+            ]
+          ],
+          "dtypes": [
+            "float32"
+          ]
+        }
+      },
+      {
+        "name": "model.blocks.6.norm1",
+        "type": "LayerNorm",
+        "output": {
+          "bytes": 85248,
+          "numel": 21312,
+          "shapes": [
+            [
+              1,
+              111,
+              192
+            ]
+          ],
+          "dtypes": [
+            "float32"
+          ]
+        }
+      },
+      {
+        "name": "model.blocks.6.attn.attn_drop",
+        "type": "Dropout",
+        "output": {
+          "bytes": 147852,
+          "numel": 36963,
+          "shapes": [
+            [
+              1,
+              3,
+              111,
+              111
+            ]
+          ],
+          "dtypes": [
+            "float32"
+          ]
+        }
+      },
+      {
+        "name": "model.blocks.6.attn.proj",
+        "type": "Linear",
+        "output": {
+          "bytes": 85248,
+          "numel": 21312,
+          "shapes": [
+            [
+              1,
+              111,
+              192
+            ]
+          ],
+          "dtypes": [
+            "float32"
+          ]
+        }
+      },
+      {
+        "name": "model.blocks.6.attn.proj_drop",
+        "type": "Dropout",
+        "output": {
+          "bytes": 85248,
+          "numel": 21312,
+          "shapes": [
+            [
+              1,
+              111,
+              192
+            ]
+          ],
+          "dtypes": [
+            "float32"
+          ]
+        }
+      },
+      {
+        "name": "model.blocks.6.ls1",
+        "type": "Identity",
+        "output": {
+          "bytes": 85248,
+          "numel": 21312,
+          "shapes": [
+            [
+              1,
+              111,
+              192
+            ]
+          ],
+          "dtypes": [
+            "float32"
+          ]
+        }
+      },
+      {
+        "name": "model.blocks.6.drop_path1",
+        "type": "Identity",
+        "output": {
+          "bytes": 85248,
+          "numel": 21312,
+          "shapes": [
+            [
+              1,
+              111,
+              192
+            ]
+          ],
+          "dtypes": [
+            "float32"
+          ]
+        }
+      },
+      {
+        "name": "model.blocks.6.norm2",
+        "type": "LayerNorm",
+        "output": {
+          "bytes": 85248,
+          "numel": 21312,
+          "shapes": [
+            [
+              1,
+              111,
+              192
+            ]
+          ],
+          "dtypes": [
+            "float32"
+          ]
+        }
+      },
+      {
+        "name": "model.blocks.6.mlp.fc1",
+        "type": "Linear",
+        "output": {
+          "bytes": 59052,
+          "numel": 14763,
+          "shapes": [
+            [
+              1,
+              111,
+              133
+            ]
+          ],
+          "dtypes": [
+            "float32"
+          ]
+        }
+      },
+      {
+        "name": "model.blocks.6.mlp.act",
+        "type": "GELU",
+        "output": {
+          "bytes": 59052,
+          "numel": 14763,
+          "shapes": [
+            [
+              1,
+              111,
+              133
+            ]
+          ],
+          "dtypes": [
+            "float32"
+          ]
+        }
+      },
+      {
+        "name": "model.blocks.6.mlp.drop1",
+        "type": "Dropout",
+        "output": {
+          "bytes": 59052,
+          "numel": 14763,
+          "shapes": [
+            [
+              1,
+              111,
+              133
+            ]
+          ],
+          "dtypes": [
+            "float32"
+          ]
+        }
+      },
+      {
+        "name": "model.blocks.6.mlp.norm",
+        "type": "Identity",
+        "output": {
+          "bytes": 59052,
+          "numel": 14763,
+          "shapes": [
+            [
+              1,
+              111,
+              133
+            ]
+          ],
+          "dtypes": [
+            "float32"
+          ]
+        }
+      },
+      {
+        "name": "model.blocks.6.mlp.fc2",
+        "type": "Linear",
+        "output": {
+          "bytes": 85248,
+          "numel": 21312,
+          "shapes": [
+            [
+              1,
+              111,
+              192
+            ]
+          ],
+          "dtypes": [
+            "float32"
+          ]
+        }
+      },
+      {
+        "name": "model.blocks.6.mlp.drop2",
+        "type": "Dropout",
+        "output": {
+          "bytes": 85248,
+          "numel": 21312,
+          "shapes": [
+            [
+              1,
+              111,
+              192
+            ]
+          ],
+          "dtypes": [
+            "float32"
+          ]
+        }
+      },
+      {
+        "name": "model.blocks.6.ls2",
+        "type": "Identity",
+        "output": {
+          "bytes": 85248,
+          "numel": 21312,
+          "shapes": [
+            [
+              1,
+              111,
+              192
+            ]
+          ],
+          "dtypes": [
+            "float32"
+          ]
+        }
+      },
+      {
+        "name": "model.blocks.6.drop_path2",
+        "type": "Identity",
+        "output": {
+          "bytes": 85248,
+          "numel": 21312,
+          "shapes": [
+            [
+              1,
+              111,
+              192
+            ]
+          ],
+          "dtypes": [
+            "float32"
+          ]
+        }
+      },
+      {
+        "name": "model.blocks.7.norm1",
+        "type": "LayerNorm",
+        "output": {
+          "bytes": 85248,
+          "numel": 21312,
+          "shapes": [
+            [
+              1,
+              111,
+              192
+            ]
+          ],
+          "dtypes": [
+            "float32"
+          ]
+        }
+      },
+      {
+        "name": "model.blocks.7.attn.attn_drop",
+        "type": "Dropout",
+        "output": {
+          "bytes": 147852,
+          "numel": 36963,
+          "shapes": [
+            [
+              1,
+              3,
+              111,
+              111
+            ]
+          ],
+          "dtypes": [
+            "float32"
+          ]
+        }
+      },
+      {
+        "name": "model.blocks.7.attn.proj",
+        "type": "Linear",
+        "output": {
+          "bytes": 85248,
+          "numel": 21312,
+          "shapes": [
+            [
+              1,
+              111,
+              192
+            ]
+          ],
+          "dtypes": [
+            "float32"
+          ]
+        }
+      },
+      {
+        "name": "model.blocks.7.attn.proj_drop",
+        "type": "Dropout",
+        "output": {
+          "bytes": 85248,
+          "numel": 21312,
+          "shapes": [
+            [
+              1,
+              111,
+              192
+            ]
+          ],
+          "dtypes": [
+            "float32"
+          ]
+        }
+      },
+      {
+        "name": "model.blocks.7.ls1",
+        "type": "Identity",
+        "output": {
+          "bytes": 85248,
+          "numel": 21312,
+          "shapes": [
+            [
+              1,
+              111,
+              192
+            ]
+          ],
+          "dtypes": [
+            "float32"
+          ]
+        }
+      },
+      {
+        "name": "model.blocks.7.drop_path1",
+        "type": "Identity",
+        "output": {
+          "bytes": 85248,
+          "numel": 21312,
+          "shapes": [
+            [
+              1,
+              111,
+              192
+            ]
+          ],
+          "dtypes": [
+            "float32"
+          ]
+        }
+      },
+      {
+        "name": "model.blocks.7.norm2",
+        "type": "LayerNorm",
+        "output": {
+          "bytes": 85248,
+          "numel": 21312,
+          "shapes": [
+            [
+              1,
+              111,
+              192
+            ]
+          ],
+          "dtypes": [
+            "float32"
+          ]
+        }
+      },
+      {
+        "name": "model.blocks.7.mlp.fc1",
+        "type": "Linear",
+        "output": {
+          "bytes": 48396,
+          "numel": 12099,
+          "shapes": [
+            [
+              1,
+              111,
+              109
+            ]
+          ],
+          "dtypes": [
+            "float32"
+          ]
+        }
+      },
+      {
+        "name": "model.blocks.7.mlp.act",
+        "type": "GELU",
+        "output": {
+          "bytes": 48396,
+          "numel": 12099,
+          "shapes": [
+            [
+              1,
+              111,
+              109
+            ]
+          ],
+          "dtypes": [
+            "float32"
+          ]
+        }
+      },
+      {
+        "name": "model.blocks.7.mlp.drop1",
+        "type": "Dropout",
+        "output": {
+          "bytes": 48396,
+          "numel": 12099,
+          "shapes": [
+            [
+              1,
+              111,
+              109
+            ]
+          ],
+          "dtypes": [
+            "float32"
+          ]
+        }
+      },
+      {
+        "name": "model.blocks.7.mlp.norm",
+        "type": "Identity",
+        "output": {
+          "bytes": 48396,
+          "numel": 12099,
+          "shapes": [
+            [
+              1,
+              111,
+              109
+            ]
+          ],
+          "dtypes": [
+            "float32"
+          ]
+        }
+      },
+      {
+        "name": "model.blocks.7.mlp.fc2",
+        "type": "Linear",
+        "output": {
+          "bytes": 85248,
+          "numel": 21312,
+          "shapes": [
+            [
+              1,
+              111,
+              192
+            ]
+          ],
+          "dtypes": [
+            "float32"
+          ]
+        }
+      },
+      {
+        "name": "model.blocks.7.mlp.drop2",
+        "type": "Dropout",
+        "output": {
+          "bytes": 85248,
+          "numel": 21312,
+          "shapes": [
+            [
+              1,
+              111,
+              192
+            ]
+          ],
+          "dtypes": [
+            "float32"
+          ]
+        }
+      },
+      {
+        "name": "model.blocks.7.ls2",
+        "type": "Identity",
+        "output": {
+          "bytes": 85248,
+          "numel": 21312,
+          "shapes": [
+            [
+              1,
+              111,
+              192
+            ]
+          ],
+          "dtypes": [
+            "float32"
+          ]
+        }
+      },
+      {
+        "name": "model.blocks.7.drop_path2",
+        "type": "Identity",
+        "output": {
+          "bytes": 85248,
+          "numel": 21312,
+          "shapes": [
+            [
+              1,
+              111,
+              192
+            ]
+          ],
+          "dtypes": [
+            "float32"
+          ]
+        }
+      },
+      {
+        "name": "model.blocks.8.norm1",
+        "type": "LayerNorm",
+        "output": {
+          "bytes": 85248,
+          "numel": 21312,
+          "shapes": [
+            [
+              1,
+              111,
+              192
+            ]
+          ],
+          "dtypes": [
+            "float32"
+          ]
+        }
+      },
+      {
+        "name": "model.blocks.8.attn.attn_drop",
+        "type": "Dropout",
+        "output": {
+          "bytes": 147852,
+          "numel": 36963,
+          "shapes": [
+            [
+              1,
+              3,
+              111,
+              111
+            ]
+          ],
+          "dtypes": [
+            "float32"
+          ]
+        }
+      },
+      {
+        "name": "model.blocks.8.attn.proj",
+        "type": "Linear",
+        "output": {
+          "bytes": 85248,
+          "numel": 21312,
+          "shapes": [
+            [
+              1,
+              111,
+              192
+            ]
+          ],
+          "dtypes": [
+            "float32"
+          ]
+        }
+      },
+      {
+        "name": "model.blocks.8.attn.proj_drop",
+        "type": "Dropout",
+        "output": {
+          "bytes": 85248,
+          "numel": 21312,
+          "shapes": [
+            [
+              1,
+              111,
+              192
+            ]
+          ],
+          "dtypes": [
+            "float32"
+          ]
+        }
+      },
+      {
+        "name": "model.blocks.8.ls1",
+        "type": "Identity",
+        "output": {
+          "bytes": 85248,
+          "numel": 21312,
+          "shapes": [
+            [
+              1,
+              111,
+              192
+            ]
+          ],
+          "dtypes": [
+            "float32"
+          ]
+        }
+      },
+      {
+        "name": "model.blocks.8.drop_path1",
+        "type": "Identity",
+        "output": {
+          "bytes": 85248,
+          "numel": 21312,
+          "shapes": [
+            [
+              1,
+              111,
+              192
+            ]
+          ],
+          "dtypes": [
+            "float32"
+          ]
+        }
+      },
+      {
+        "name": "model.blocks.8.norm2",
+        "type": "LayerNorm",
+        "output": {
+          "bytes": 85248,
+          "numel": 21312,
+          "shapes": [
+            [
+              1,
+              111,
+              192
+            ]
+          ],
+          "dtypes": [
+            "float32"
+          ]
+        }
+      },
+      {
+        "name": "model.blocks.8.mlp.fc1",
+        "type": "Linear",
+        "output": {
+          "bytes": 37740,
+          "numel": 9435,
+          "shapes": [
+            [
+              1,
+              111,
+              85
+            ]
+          ],
+          "dtypes": [
+            "float32"
+          ]
+        }
+      },
+      {
+        "name": "model.blocks.8.mlp.act",
+        "type": "GELU",
+        "output": {
+          "bytes": 37740,
+          "numel": 9435,
+          "shapes": [
+            [
+              1,
+              111,
+              85
+            ]
+          ],
+          "dtypes": [
+            "float32"
+          ]
+        }
+      },
+      {
+        "name": "model.blocks.8.mlp.drop1",
+        "type": "Dropout",
+        "output": {
+          "bytes": 37740,
+          "numel": 9435,
+          "shapes": [
+            [
+              1,
+              111,
+              85
+            ]
+          ],
+          "dtypes": [
+            "float32"
+          ]
+        }
+      },
+      {
+        "name": "model.blocks.8.mlp.norm",
+        "type": "Identity",
+        "output": {
+          "bytes": 37740,
+          "numel": 9435,
+          "shapes": [
+            [
+              1,
+              111,
+              85
+            ]
+          ],
+          "dtypes": [
+            "float32"
+          ]
+        }
+      },
+      {
+        "name": "model.blocks.8.mlp.fc2",
+        "type": "Linear",
+        "output": {
+          "bytes": 85248,
+          "numel": 21312,
+          "shapes": [
+            [
+              1,
+              111,
+              192
+            ]
+          ],
+          "dtypes": [
+            "float32"
+          ]
+        }
+      },
+      {
+        "name": "model.blocks.8.mlp.drop2",
+        "type": "Dropout",
+        "output": {
+          "bytes": 85248,
+          "numel": 21312,
+          "shapes": [
+            [
+              1,
+              111,
+              192
+            ]
+          ],
+          "dtypes": [
+            "float32"
+          ]
+        }
+      },
+      {
+        "name": "model.blocks.8.ls2",
+        "type": "Identity",
+        "output": {
+          "bytes": 85248,
+          "numel": 21312,
+          "shapes": [
+            [
+              1,
+              111,
+              192
+            ]
+          ],
+          "dtypes": [
+            "float32"
+          ]
+        }
+      },
+      {
+        "name": "model.blocks.8.drop_path2",
+        "type": "Identity",
+        "output": {
+          "bytes": 85248,
+          "numel": 21312,
+          "shapes": [
+            [
+              1,
+              111,
+              192
+            ]
+          ],
+          "dtypes": [
+            "float32"
+          ]
+        }
+      },
+      {
+        "name": "model.blocks.9.norm1",
+        "type": "LayerNorm",
+        "output": {
+          "bytes": 85248,
+          "numel": 21312,
+          "shapes": [
+            [
+              1,
+              111,
+              192
+            ]
+          ],
+          "dtypes": [
+            "float32"
+          ]
+        }
+      },
+      {
+        "name": "model.blocks.9.attn.attn_drop",
+        "type": "Dropout",
+        "output": {
+          "bytes": 147852,
+          "numel": 36963,
+          "shapes": [
+            [
+              1,
+              3,
+              111,
+              111
+            ]
+          ],
+          "dtypes": [
+            "float32"
+          ]
+        }
+      },
+      {
+        "name": "model.blocks.9.attn.proj",
+        "type": "Linear",
+        "output": {
+          "bytes": 85248,
+          "numel": 21312,
+          "shapes": [
+            [
+              1,
+              111,
+              192
+            ]
+          ],
+          "dtypes": [
+            "float32"
+          ]
+        }
+      },
+      {
+        "name": "model.blocks.9.attn.proj_drop",
+        "type": "Dropout",
+        "output": {
+          "bytes": 85248,
+          "numel": 21312,
+          "shapes": [
+            [
+              1,
+              111,
+              192
+            ]
+          ],
+          "dtypes": [
+            "float32"
+          ]
+        }
+      },
+      {
+        "name": "model.blocks.9.ls1",
+        "type": "Identity",
+        "output": {
+          "bytes": 85248,
+          "numel": 21312,
+          "shapes": [
+            [
+              1,
+              111,
+              192
+            ]
+          ],
+          "dtypes": [
+            "float32"
+          ]
+        }
+      },
+      {
+        "name": "model.blocks.9.drop_path1",
+        "type": "Identity",
+        "output": {
+          "bytes": 85248,
+          "numel": 21312,
+          "shapes": [
+            [
+              1,
+              111,
+              192
+            ]
+          ],
+          "dtypes": [
+            "float32"
+          ]
+        }
+      },
+      {
+        "name": "model.blocks.9.norm2",
+        "type": "LayerNorm",
+        "output": {
+          "bytes": 85248,
+          "numel": 21312,
+          "shapes": [
+            [
+              1,
+              111,
+              192
+            ]
+          ],
+          "dtypes": [
+            "float32"
+          ]
+        }
+      },
+      {
+        "name": "model.blocks.9.mlp.fc1",
+        "type": "Linear",
+        "output": {
+          "bytes": 46176,
+          "numel": 11544,
+          "shapes": [
+            [
+              1,
+              111,
+              104
+            ]
+          ],
+          "dtypes": [
+            "float32"
+          ]
+        }
+      },
+      {
+        "name": "model.blocks.9.mlp.act",
+        "type": "GELU",
+        "output": {
+          "bytes": 46176,
+          "numel": 11544,
+          "shapes": [
+            [
+              1,
+              111,
+              104
+            ]
+          ],
+          "dtypes": [
+            "float32"
+          ]
+        }
+      },
+      {
+        "name": "model.blocks.9.mlp.drop1",
+        "type": "Dropout",
+        "output": {
+          "bytes": 46176,
+          "numel": 11544,
+          "shapes": [
+            [
+              1,
+              111,
+              104
+            ]
+          ],
+          "dtypes": [
+            "float32"
+          ]
+        }
+      },
+      {
+        "name": "model.blocks.9.mlp.norm",
+        "type": "Identity",
+        "output": {
+          "bytes": 46176,
+          "numel": 11544,
+          "shapes": [
+            [
+              1,
+              111,
+              104
+            ]
+          ],
+          "dtypes": [
+            "float32"
+          ]
+        }
+      },
+      {
+        "name": "model.blocks.9.mlp.fc2",
+        "type": "Linear",
+        "output": {
+          "bytes": 85248,
+          "numel": 21312,
+          "shapes": [
+            [
+              1,
+              111,
+              192
+            ]
+          ],
+          "dtypes": [
+            "float32"
+          ]
+        }
+      },
+      {
+        "name": "model.blocks.9.mlp.drop2",
+        "type": "Dropout",
+        "output": {
+          "bytes": 85248,
+          "numel": 21312,
+          "shapes": [
+            [
+              1,
+              111,
+              192
+            ]
+          ],
+          "dtypes": [
+            "float32"
+          ]
+        }
+      },
+      {
+        "name": "model.blocks.9.ls2",
+        "type": "Identity",
+        "output": {
+          "bytes": 85248,
+          "numel": 21312,
+          "shapes": [
+            [
+              1,
+              111,
+              192
+            ]
+          ],
+          "dtypes": [
+            "float32"
+          ]
+        }
+      },
+      {
+        "name": "model.blocks.9.drop_path2",
+        "type": "Identity",
+        "output": {
+          "bytes": 85248,
+          "numel": 21312,
+          "shapes": [
+            [
+              1,
+              111,
+              192
+            ]
+          ],
+          "dtypes": [
+            "float32"
+          ]
+        }
+      },
+      {
+        "name": "model.blocks.10.norm1",
+        "type": "LayerNorm",
+        "output": {
+          "bytes": 85248,
+          "numel": 21312,
+          "shapes": [
+            [
+              1,
+              111,
+              192
+            ]
+          ],
+          "dtypes": [
+            "float32"
+          ]
+        }
+      },
+      {
+        "name": "model.blocks.10.attn.attn_drop",
+        "type": "Dropout",
+        "output": {
+          "bytes": 147852,
+          "numel": 36963,
+          "shapes": [
+            [
+              1,
+              3,
+              111,
+              111
+            ]
+          ],
+          "dtypes": [
+            "float32"
+          ]
+        }
+      },
+      {
+        "name": "model.blocks.10.attn.proj",
+        "type": "Linear",
+        "output": {
+          "bytes": 85248,
+          "numel": 21312,
+          "shapes": [
+            [
+              1,
+              111,
+              192
+            ]
+          ],
+          "dtypes": [
+            "float32"
+          ]
+        }
+      },
+      {
+        "name": "model.blocks.10.attn.proj_drop",
+        "type": "Dropout",
+        "output": {
+          "bytes": 85248,
+          "numel": 21312,
+          "shapes": [
+            [
+              1,
+              111,
+              192
+            ]
+          ],
+          "dtypes": [
+            "float32"
+          ]
+        }
+      },
+      {
+        "name": "model.blocks.10.ls1",
+        "type": "Identity",
+        "output": {
+          "bytes": 85248,
+          "numel": 21312,
+          "shapes": [
+            [
+              1,
+              111,
+              192
+            ]
+          ],
+          "dtypes": [
+            "float32"
+          ]
+        }
+      },
+      {
+        "name": "model.blocks.10.drop_path1",
+        "type": "Identity",
+        "output": {
+          "bytes": 85248,
+          "numel": 21312,
+          "shapes": [
+            [
+              1,
+              111,
+              192
+            ]
+          ],
+          "dtypes": [
+            "float32"
+          ]
+        }
+      },
+      {
+        "name": "model.blocks.10.norm2",
+        "type": "LayerNorm",
+        "output": {
+          "bytes": 85248,
+          "numel": 21312,
+          "shapes": [
+            [
+              1,
+              111,
+              192
+            ]
+          ],
+          "dtypes": [
+            "float32"
+          ]
+        }
+      },
+      {
+        "name": "model.blocks.10.mlp.fc1",
+        "type": "Linear",
+        "output": {
+          "bytes": 77700,
+          "numel": 19425,
+          "shapes": [
+            [
+              1,
+              111,
+              175
+            ]
+          ],
+          "dtypes": [
+            "float32"
+          ]
+        }
+      },
+      {
+        "name": "model.blocks.10.mlp.act",
+        "type": "GELU",
+        "output": {
+          "bytes": 77700,
+          "numel": 19425,
+          "shapes": [
+            [
+              1,
+              111,
+              175
+            ]
+          ],
+          "dtypes": [
+            "float32"
+          ]
+        }
+      },
+      {
+        "name": "model.blocks.10.mlp.drop1",
+        "type": "Dropout",
+        "output": {
+          "bytes": 77700,
+          "numel": 19425,
+          "shapes": [
+            [
+              1,
+              111,
+              175
+            ]
+          ],
+          "dtypes": [
+            "float32"
+          ]
+        }
+      },
+      {
+        "name": "model.blocks.10.mlp.norm",
+        "type": "Identity",
+        "output": {
+          "bytes": 77700,
+          "numel": 19425,
+          "shapes": [
+            [
+              1,
+              111,
+              175
+            ]
+          ],
+          "dtypes": [
+            "float32"
+          ]
+        }
+      },
+      {
+        "name": "model.blocks.10.mlp.fc2",
+        "type": "Linear",
+        "output": {
+          "bytes": 85248,
+          "numel": 21312,
+          "shapes": [
+            [
+              1,
+              111,
+              192
+            ]
+          ],
+          "dtypes": [
+            "float32"
+          ]
+        }
+      },
+      {
+        "name": "model.blocks.10.mlp.drop2",
+        "type": "Dropout",
+        "output": {
+          "bytes": 85248,
+          "numel": 21312,
+          "shapes": [
+            [
+              1,
+              111,
+              192
+            ]
+          ],
+          "dtypes": [
+            "float32"
+          ]
+        }
+      },
+      {
+        "name": "model.blocks.10.ls2",
+        "type": "Identity",
+        "output": {
+          "bytes": 85248,
+          "numel": 21312,
+          "shapes": [
+            [
+              1,
+              111,
+              192
+            ]
+          ],
+          "dtypes": [
+            "float32"
+          ]
+        }
+      },
+      {
+        "name": "model.blocks.10.drop_path2",
+        "type": "Identity",
+        "output": {
+          "bytes": 85248,
+          "numel": 21312,
+          "shapes": [
+            [
+              1,
+              111,
+              192
+            ]
+          ],
+          "dtypes": [
+            "float32"
+          ]
+        }
+      },
+      {
+        "name": "model.blocks.11.norm1",
+        "type": "LayerNorm",
+        "output": {
+          "bytes": 85248,
+          "numel": 21312,
+          "shapes": [
+            [
+              1,
+              111,
+              192
+            ]
+          ],
+          "dtypes": [
+            "float32"
+          ]
+        }
+      },
+      {
+        "name": "model.blocks.11.attn.attn_drop",
+        "type": "Dropout",
+        "output": {
+          "bytes": 1332,
+          "numel": 333,
+          "shapes": [
+            [
+              1,
+              3,
+              1,
+              111
+            ]
+          ],
+          "dtypes": [
+            "float32"
+          ]
+        }
+      },
+      {
+        "name": "model.blocks.11.attn.proj",
+        "type": "Linear",
+        "output": {
+          "bytes": 768,
+          "numel": 192,
+          "shapes": [
+            [
+              1,
+              1,
+              192
+            ]
+          ],
+          "dtypes": [
+            "float32"
+          ]
+        }
+      },
+      {
+        "name": "model.blocks.11.attn.proj_drop",
+        "type": "Dropout",
+        "output": {
+          "bytes": 768,
+          "numel": 192,
+          "shapes": [
+            [
+              1,
+              1,
+              192
+            ]
+          ],
+          "dtypes": [
+            "float32"
+          ]
+        }
+      },
+      {
+        "name": "model.blocks.11.ls1",
+        "type": "Identity",
+        "output": {
+          "bytes": 768,
+          "numel": 192,
+          "shapes": [
+            [
+              1,
+              1,
+              192
+            ]
+          ],
+          "dtypes": [
+            "float32"
+          ]
+        }
+      },
+      {
+        "name": "model.blocks.11.drop_path1",
+        "type": "Identity",
+        "output": {
+          "bytes": 768,
+          "numel": 192,
+          "shapes": [
+            [
+              1,
+              1,
+              192
+            ]
+          ],
+          "dtypes": [
+            "float32"
+          ]
+        }
+      },
+      {
+        "name": "model.blocks.11.norm2",
+        "type": "LayerNorm",
+        "output": {
+          "bytes": 768,
+          "numel": 192,
+          "shapes": [
+            [
+              1,
+              1,
+              192
+            ]
+          ],
+          "dtypes": [
+            "float32"
+          ]
+        }
+      },
+      {
+        "name": "model.blocks.11.mlp.fc1",
+        "type": "Linear",
+        "output": {
+          "bytes": 1000,
+          "numel": 250,
+          "shapes": [
+            [
+              1,
+              1,
+              250
+            ]
+          ],
+          "dtypes": [
+            "float32"
+          ]
+        }
+      },
+      {
+        "name": "model.blocks.11.mlp.act",
+        "type": "GELU",
+        "output": {
+          "bytes": 1000,
+          "numel": 250,
+          "shapes": [
+            [
+              1,
+              1,
+              250
+            ]
+          ],
+          "dtypes": [
+            "float32"
+          ]
+        }
+      },
+      {
+        "name": "model.blocks.11.mlp.drop1",
+        "type": "Dropout",
+        "output": {
+          "bytes": 1000,
+          "numel": 250,
+          "shapes": [
+            [
+              1,
+              1,
+              250
+            ]
+          ],
+          "dtypes": [
+            "float32"
+          ]
+        }
+      },
+      {
+        "name": "model.blocks.11.mlp.norm",
+        "type": "Identity",
+        "output": {
+          "bytes": 1000,
+          "numel": 250,
+          "shapes": [
+            [
+              1,
+              1,
+              250
+            ]
+          ],
+          "dtypes": [
+            "float32"
+          ]
+        }
+      },
+      {
+        "name": "model.blocks.11.mlp.fc2",
+        "type": "Linear",
+        "output": {
+          "bytes": 768,
+          "numel": 192,
+          "shapes": [
+            [
+              1,
+              1,
+              192
+            ]
+          ],
+          "dtypes": [
+            "float32"
+          ]
+        }
+      },
+      {
+        "name": "model.blocks.11.mlp.drop2",
+        "type": "Dropout",
+        "output": {
+          "bytes": 768,
+          "numel": 192,
+          "shapes": [
+            [
+              1,
+              1,
+              192
+            ]
+          ],
+          "dtypes": [
+            "float32"
+          ]
+        }
+      },
+      {
+        "name": "model.blocks.11.ls2",
+        "type": "Identity",
+        "output": {
+          "bytes": 768,
+          "numel": 192,
+          "shapes": [
+            [
+              1,
+              1,
+              192
+            ]
+          ],
+          "dtypes": [
+            "float32"
+          ]
+        }
+      },
+      {
+        "name": "model.blocks.11.drop_path2",
+        "type": "Identity",
+        "output": {
+          "bytes": 768,
+          "numel": 192,
+          "shapes": [
+            [
+              1,
+              1,
+              192
+            ]
+          ],
+          "dtypes": [
+            "float32"
+          ]
+        }
+      },
+      {
+        "name": "model.norm",
+        "type": "LayerNorm",
+        "output": {
+          "bytes": 768,
+          "numel": 192,
+          "shapes": [
+            [
+              1,
+              1,
+              192
+            ]
+          ],
+          "dtypes": [
+            "float32"
+          ]
+        }
+      },
+      {
+        "name": "model.fc_norm",
+        "type": "Identity",
+        "output": {
+          "bytes": 768,
+          "numel": 192,
+          "shapes": [
+            [
+              1,
+              192
+            ]
+          ],
+          "dtypes": [
+            "float32"
+          ]
+        }
+      },
+      {
+        "name": "model.head_drop",
+        "type": "Dropout",
+        "output": {
+          "bytes": 768,
+          "numel": 192,
+          "shapes": [
+            [
+              1,
+              192
+            ]
+          ],
+          "dtypes": [
+            "float32"
+          ]
+        }
+      },
+      {
+        "name": "model.head",
+        "type": "Linear",
+        "output": {
+          "bytes": 4000,
+          "numel": 1000,
+          "shapes": [
+            [
+              1,
+              1000
+            ]
+          ],
+          "dtypes": [
+            "float32"
+          ]
+        }
+      }
+    ],
+    "blocks": [
+      {
+        "block": 0,
+        "tokens_in": 197,
+        "tokens_out": 121,
+        "embed_dim": 192,
+        "heads": 3,
+        "mlp_hidden": 298,
+        "bytes_by_tensor": {
+          "input": 151296,
+          "selected_residual": 92928,
+          "q": 92928,
+          "k": 151296,
+          "v": 151296,
+          "attention_scores": 286044,
+          "attention_probabilities": 286044,
+          "attention_context": 92928,
+          "mlp_hidden": 144232,
+          "block_output": 92928,
+          "selection_matrix": 95348
+        },
+        "sum_tensor_bytes_upper_bound": 1637268,
+        "attention_matrix_bytes": 572088
+      },
+      {
+        "block": 1,
+        "tokens_in": 121,
+        "tokens_out": 121,
+        "embed_dim": 192,
+        "heads": 3,
+        "mlp_hidden": 181,
+        "bytes_by_tensor": {
+          "input": 92928,
+          "selected_residual": 92928,
+          "q": 92928,
+          "k": 92928,
+          "v": 92928,
+          "attention_scores": 175692,
+          "attention_probabilities": 175692,
+          "attention_context": 92928,
+          "mlp_hidden": 87604,
+          "block_output": 92928
+        },
+        "sum_tensor_bytes_upper_bound": 1089484,
+        "attention_matrix_bytes": 351384
+      },
+      {
+        "block": 2,
+        "tokens_in": 121,
+        "tokens_out": 121,
+        "embed_dim": 192,
+        "heads": 3,
+        "mlp_hidden": 80,
+        "bytes_by_tensor": {
+          "input": 92928,
+          "selected_residual": 92928,
+          "q": 92928,
+          "k": 92928,
+          "v": 92928,
+          "attention_scores": 175692,
+          "attention_probabilities": 175692,
+          "attention_context": 92928,
+          "mlp_hidden": 38720,
+          "block_output": 92928
+        },
+        "sum_tensor_bytes_upper_bound": 1040600,
+        "attention_matrix_bytes": 351384
+      },
+      {
+        "block": 3,
+        "tokens_in": 121,
+        "tokens_out": 121,
+        "embed_dim": 192,
+        "heads": 3,
+        "mlp_hidden": 117,
+        "bytes_by_tensor": {
+          "input": 92928,
+          "selected_residual": 92928,
+          "q": 92928,
+          "k": 92928,
+          "v": 92928,
+          "attention_scores": 175692,
+          "attention_probabilities": 175692,
+          "attention_context": 92928,
+          "mlp_hidden": 56628,
+          "block_output": 92928
+        },
+        "sum_tensor_bytes_upper_bound": 1058508,
+        "attention_matrix_bytes": 351384
+      },
+      {
+        "block": 4,
+        "tokens_in": 121,
+        "tokens_out": 121,
+        "embed_dim": 192,
+        "heads": 3,
+        "mlp_hidden": 121,
+        "bytes_by_tensor": {
+          "input": 92928,
+          "selected_residual": 92928,
+          "q": 92928,
+          "k": 92928,
+          "v": 92928,
+          "attention_scores": 175692,
+          "attention_probabilities": 175692,
+          "attention_context": 92928,
+          "mlp_hidden": 58564,
+          "block_output": 92928
+        },
+        "sum_tensor_bytes_upper_bound": 1060444,
+        "attention_matrix_bytes": 351384
+      },
+      {
+        "block": 5,
+        "tokens_in": 121,
+        "tokens_out": 111,
+        "embed_dim": 192,
+        "heads": 3,
+        "mlp_hidden": 147,
+        "bytes_by_tensor": {
+          "input": 92928,
+          "selected_residual": 85248,
+          "q": 85248,
+          "k": 92928,
+          "v": 92928,
+          "attention_scores": 161172,
+          "attention_probabilities": 161172,
+          "attention_context": 85248,
+          "mlp_hidden": 65268,
+          "block_output": 85248,
+          "selection_matrix": 53724
+        },
+        "sum_tensor_bytes_upper_bound": 1061112,
+        "attention_matrix_bytes": 322344
+      },
+      {
+        "block": 6,
+        "tokens_in": 111,
+        "tokens_out": 111,
+        "embed_dim": 192,
+        "heads": 3,
+        "mlp_hidden": 133,
+        "bytes_by_tensor": {
+          "input": 85248,
+          "selected_residual": 85248,
+          "q": 85248,
+          "k": 85248,
+          "v": 85248,
+          "attention_scores": 147852,
+          "attention_probabilities": 147852,
+          "attention_context": 85248,
+          "mlp_hidden": 59052,
+          "block_output": 85248
+        },
+        "sum_tensor_bytes_upper_bound": 951492,
+        "attention_matrix_bytes": 295704
+      },
+      {
+        "block": 7,
+        "tokens_in": 111,
+        "tokens_out": 111,
+        "embed_dim": 192,
+        "heads": 3,
+        "mlp_hidden": 109,
+        "bytes_by_tensor": {
+          "input": 85248,
+          "selected_residual": 85248,
+          "q": 85248,
+          "k": 85248,
+          "v": 85248,
+          "attention_scores": 147852,
+          "attention_probabilities": 147852,
+          "attention_context": 85248,
+          "mlp_hidden": 48396,
+          "block_output": 85248
+        },
+        "sum_tensor_bytes_upper_bound": 940836,
+        "attention_matrix_bytes": 295704
+      },
+      {
+        "block": 8,
+        "tokens_in": 111,
+        "tokens_out": 111,
+        "embed_dim": 192,
+        "heads": 3,
+        "mlp_hidden": 85,
+        "bytes_by_tensor": {
+          "input": 85248,
+          "selected_residual": 85248,
+          "q": 85248,
+          "k": 85248,
+          "v": 85248,
+          "attention_scores": 147852,
+          "attention_probabilities": 147852,
+          "attention_context": 85248,
+          "mlp_hidden": 37740,
+          "block_output": 85248
+        },
+        "sum_tensor_bytes_upper_bound": 930180,
+        "attention_matrix_bytes": 295704
+      },
+      {
+        "block": 9,
+        "tokens_in": 111,
+        "tokens_out": 111,
+        "embed_dim": 192,
+        "heads": 3,
+        "mlp_hidden": 104,
+        "bytes_by_tensor": {
+          "input": 85248,
+          "selected_residual": 85248,
+          "q": 85248,
+          "k": 85248,
+          "v": 85248,
+          "attention_scores": 147852,
+          "attention_probabilities": 147852,
+          "attention_context": 85248,
+          "mlp_hidden": 46176,
+          "block_output": 85248
+        },
+        "sum_tensor_bytes_upper_bound": 938616,
+        "attention_matrix_bytes": 295704
+      },
+      {
+        "block": 10,
+        "tokens_in": 111,
+        "tokens_out": 111,
+        "embed_dim": 192,
+        "heads": 3,
+        "mlp_hidden": 175,
+        "bytes_by_tensor": {
+          "input": 85248,
+          "selected_residual": 85248,
+          "q": 85248,
+          "k": 85248,
+          "v": 85248,
+          "attention_scores": 147852,
+          "attention_probabilities": 147852,
+          "attention_context": 85248,
+          "mlp_hidden": 77700,
+          "block_output": 85248
+        },
+        "sum_tensor_bytes_upper_bound": 970140,
+        "attention_matrix_bytes": 295704
+      },
+      {
+        "block": 11,
+        "tokens_in": 111,
+        "tokens_out": 1,
+        "embed_dim": 192,
+        "heads": 3,
+        "mlp_hidden": 250,
+        "bytes_by_tensor": {
+          "input": 85248,
+          "selected_residual": 768,
+          "q": 768,
+          "k": 85248,
+          "v": 85248,
+          "attention_scores": 1332,
+          "attention_probabilities": 1332,
+          "attention_context": 768,
+          "mlp_hidden": 1000,
+          "block_output": 768
+        },
+        "sum_tensor_bytes_upper_bound": 262480,
+        "attention_matrix_bytes": 2664
+      }
+    ]
+  }
+}

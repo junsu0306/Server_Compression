@@ -1,0 +1,77 @@
+{
+  "key": "tiny30",
+  "phase": "patch",
+  "selected_batch": 512,
+  "headroom_mib": 1536.0,
+  "trials": [
+    {
+      "key": "tiny30",
+      "phase": "patch",
+      "batch_size": 384,
+      "physical_gpu": "0",
+      "steps": 5,
+      "synthetic_input": true,
+      "images_per_second": 2263.8871231077887,
+      "peak_allocated_mib": 4658.04443359375,
+      "peak_reserved_mib": 5784.0,
+      "free_before_mib": 10863.6875,
+      "free_after_mib": 5027.6875,
+      "total_mib": 11019.5625,
+      "stats": {
+        "loss": 6.8759458541870115,
+        "task_kd_loss": 6.8759458541870115,
+        "memory_loss": 0.0,
+        "top1": 0.5729166984558105,
+        "top5": 2.0833333492279054
+      },
+      "memory": {},
+      "status": "ok"
+    },
+    {
+      "key": "tiny30",
+      "phase": "patch",
+      "batch_size": 512,
+      "physical_gpu": "0",
+      "steps": 5,
+      "synthetic_input": true,
+      "images_per_second": 2525.937034519181,
+      "peak_allocated_mib": 6127.05029296875,
+      "peak_reserved_mib": 7682.0,
+      "free_before_mib": 10863.6875,
+      "free_after_mib": 3129.6875,
+      "total_mib": 11019.5625,
+      "stats": {
+        "loss": 6.863481903076172,
+        "task_kd_loss": 6.863481903076172,
+        "memory_loss": 0.0,
+        "top1": 0.3125,
+        "top5": 1.3671875
+      },
+      "memory": {},
+      "status": "ok"
+    },
+    {
+      "key": "tiny30",
+      "phase": "patch",
+      "batch_size": 640,
+      "physical_gpu": "0",
+      "steps": 5,
+      "synthetic_input": true,
+      "images_per_second": 2590.222803615911,
+      "peak_allocated_mib": 7628.30810546875,
+      "peak_reserved_mib": 9702.0,
+      "free_before_mib": 10863.6875,
+      "free_after_mib": 1109.6875,
+      "total_mib": 11019.5625,
+      "stats": {
+        "loss": 6.908373737335205,
+        "task_kd_loss": 6.908373737335205,
+        "memory_loss": 0.0,
+        "top1": 0.0625,
+        "top5": 1.15625
+      },
+      "memory": {},
+      "status": "insufficient_headroom"
+    }
+  ]
+}
