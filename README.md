@@ -4,11 +4,12 @@ ViT-Tiny / ViT-Small에 **목표 구조 기반 메모리 예산 → global L2 FF
 
 최종 실험 `final_20261006`은 **2026-10-08 UTC에 서버의 학습·변환·평가를 모두 완료**했습니다. 이 저장소에는 최종 방법론 코드와 선별한 배포 산출물을 포함합니다. 과거 실험, 중간 체크포인트, 학습 로그, ImageNet 데이터는 포함하지 않습니다.
 
-- [최종 실험 전체 결과](output/release_final_20261006/reports/FINAL_RESULTS.md)
+- [서버 압축 → ONNX → MXQ → 실제 NPU 통합 구현·중간 기록·최종 결과](docs/END_TO_END_IMPLEMENTATION_AND_RESULTS.md)
+- [최종 서버 실험 전체 결과](output/release_final_20261006/reports/FINAL_RESULTS.md)
 - [최종 가중치·ONNX 패키지](output/release_final_20261006/README.md)
 - [구현 방법론](docs/METHODOLOGY.md) · [실행 안내](docs/RUNBOOK.md) · [결과 해석](docs/RESULTS.md) · [Git/LFS 제출 안내](docs/GIT_RELEASE.md)
 
-**역할 구분:** 이 프로젝트는 서버에서 압축·학습·FP32 평가·메모리 프로파일링·ONNX 변환까지 수행합니다. **MXQ 양자화/컴파일, 실제 Mobilint NPU 정확도·속도·메모리 측정은 별도 [`npu` 프로젝트](https://github.com/junsu0306/npu)에서 수행**합니다. 이번 ONNX의 NPU 결과는 아직 이 저장소의 결과에 포함되지 않습니다. `Orin_Compression`이 후속 작업 경로가 아닙니다.
+**역할 구분:** 이 프로젝트는 서버에서 압축·학습·FP32 평가·메모리 프로파일링·ONNX 변환까지 수행합니다. **MXQ 양자화/컴파일, 실제 Mobilint NPU 정확도·속도·메모리 측정은 별도 [`npu` 프로젝트](https://github.com/junsu0306/npu)에서 수행**합니다. 다른 서버에서 측정한 최종 NPU 결과 `final_20261015`까지 연결한 상세 설명은 [통합 문서](docs/END_TO_END_IMPLEMENTATION_AND_RESULTS.md)에 있습니다. 아래 정확도·메모리 표는 서버 FP32 결과이며, NPU 결과와 구분합니다. `Orin_Compression`이 후속 작업 경로가 아닙니다.
 
 ## 실험 과정
 
@@ -71,7 +72,7 @@ RTX 2080 Ti, FP32, batch 1, 224×224 random input, warmup 10회 후 forward 50�
 | Small30 | 97.1577 | 71.5552 | 74.0703 | 86.6843 | 46.8540 |
 | Small50 | 97.1577 | 54.3721 | 56.6802 | 69.4420 | 32.6188 |
 
-**Patch Slimming은 모듈 출력 합은 감소했지만, 이번 서버 구현의 CUDA peak와 latency는 reduced보다 증가했습니다.** 상수 선택행렬/buffer, attention 실행 방식과 임시 텐서 등의 비용을 포함한 결과이며, 이 표만으로 원인별 기여를 분리할 수는 없습니다. NPU에서도 메모리·속도가 좋아졌다고 해석하면 안 됩니다. Peak는 이 프로세스의 CUDA allocator 기준으로 다른 프로세스의 사용량을 직접 합산하지 않습니다. Latency에는 공유 서버의 경쟁 영향이 있을 수 있습니다.
+**Patch Slimming은 모듈 출력 합은 감소했지만, 이번 서버 구현의 CUDA peak와 latency는 reduced보다 증가했습니다.** 상수 선택행렬/buffer, attention 실행 방식과 임시 텐서 등의 비용을 포함한 결과이며, 이 표만으로 원인별 기여를 분리할 수는 없습니다. NPU의 메모리·속도는 이 서버 표로 추정하지 않고 [통합 문서](docs/END_TO_END_IMPLEMENTATION_AND_RESULTS.md)의 실제 장치 측정값으로 판단합니다. Peak는 이 프로세스의 CUDA allocator 기준으로 다른 프로세스의 사용량을 직접 합산하지 않습니다. Latency에는 공유 서버의 경쟁 영향이 있을 수 있습니다.
 
 ## 저장소와 산출물
 
