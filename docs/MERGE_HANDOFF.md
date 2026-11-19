@@ -146,18 +146,34 @@ mxq_compile(model=onnx_path, calib_data_path=calib_txt, save_path=mxq_path,
 
 ## 7. 알려진 차이와 이번에 보완할 기록
 
-- **서버 평가와 NPU 평가의 전처리 구현이 다르다.** 서버 FP32 평가는 timm/PIL(`crop_pct=0.9`), NPU 쪽은 OpenCV(짧은 변 249)다. 설정은 같은 뜻이지만 픽셀 단위로 같지 않다. 통합 저장소에서 하나로 맞출 수 있지만, 맞추면 서버 FP32 수치가 기존과 조금 달라진다. 맞출지 여부를 소유자와 정하고, 정한 내용을 문서에 적는다.
+- **서버 평가와 NPU 평가의 전처리 구현은 다르며, 그대로 둔다.** 서버 FP32 학습·평가는 timm/PIL(`crop_pct=0.9`), calibration과 NPU 평가는 OpenCV(짧은 변 249)다. NPU 호스트에는 학습용 패키지를 두지 않으므로 장치 쪽은 OpenCV 구현을 쓴다. 설정은 같은 뜻이지만 픽셀 단위로 같지 않다. 통일하지 않는 이유는 기존 서버 FP32 수치를 유지하기 위해서다. 문서에는 두 구현이 다르다는 점과, calibration·NPU 평가끼리는 반드시 같아야 한다는 점을 적는다.
 - **컴파일 기록을 남긴다.** 기존 최종 MXQ는 컴파일 로그, calibration 이미지 목록·해시, 컴파일러 버전이 보존되지 않았다. 통합 실행기는 컴파일 stdout 로그, calibration 이미지 경로 목록과 SHA-256, `qbcompiler.__version__`, 입력 ONNX와 출력 MXQ의 SHA-256을 결과 폴더에 저장하게 한다.
 - **Patch Slimming 모델은 NPU에서 정확도가 추가로 떨어진다**(서버 FP32 대비 7.9~18.1%p). MXQ 변환 과정의 양자화에서 발생한 것으로 판단하며, 이번 통합의 수정 대상이 아니다. 통합 후에도 이 현상이 재현되는 것이 정상이다.
 - MXQ 컴파일은 byte 단위로 재현되지 않는다(같은 ONNX를 두 번 컴파일하면 파일 해시가 다르다). 해시 일치가 아니라 정확도로 비교한다.
 
-## 8. 소유자에게 확인할 것
+## 8. 결정된 사항과 남은 확인
+
+결정된 사항:
+
+| 항목 | 결정 |
+|---|---|
+| 최종 모델 포함 | 최종 **ONNX 12개와 MXQ 12개**를 참고용으로 새 저장소에 포함한다(Git LFS, 합계 약 618 MiB). 각 ONNX의 `.verified.json`과 최종 결과 파일(서버 `reports/`, NPU `final_20261015/`)도 함께 둔다 |
+| 포함 위치 | 새로 실행한 산출물과 섞이지 않게 별도 폴더(예: `reference/final_20261006/`)에 둔다. 실행기의 출력 폴더로 쓰지 않는다 |
+| 전처리 | 서버와 NPU의 구현을 통일하지 않는다(7절) |
+| 장소 인식 실험 | 포함하지 않는다. `ETRI_Evaluation_Metric`의 코드·문서·결과를 가져오지 않는다 |
+
+참고 모델을 넣을 때 지킬 것:
+
+- `.onnx`, `.mxq`는 Git LFS로 추적한다(`.gitattributes`).
+- 원본과 SHA-256이 같은지 확인한다. 서버 `output/release_final_20261006/MANIFEST.json`과 npu `assets/RELEASE_MANIFEST.json`에 해시가 있다.
+- ONNX와 MXQ의 대응(같은 이름 stem)과, 그 모델로 측정한 결과 파일을 README에서 연결해 준다.
+- 참고 MXQ는 9절 4번 검증에서 새로 컴파일한 MXQ의 비교 대상으로 쓴다.
+
+남은 확인:
 
 1. npu 저장소의 2026-10-20 정리본이 원격에 push됐는가(2절).
-2. 최종 가중치·ONNX·MXQ를 새 저장소에 포함할지(Git LFS, 약 1.58 GiB + MXQ), 코드만 둘지.
-3. 서버 평가 전처리를 OpenCV 구현으로 통일할지(7절).
-4. 장소 인식 실험(`ETRI_Evaluation_Metric`)을 같은 저장소에 넣을지.
-5. 새 저장소의 이름과 공개 범위, 라이선스 표기(timm·torchvision 등 사용 패키지의 라이선스 고지 포함).
+2. PyTorch checkpoint(`.pt`, 약 1.58 GiB)도 포함할지. 현재 결정은 ONNX와 MXQ만이다. `.pt`가 없으면 9절 2번(기존 가중치로 ONNX 재export)은 원본 저장소의 가중치를 받아서 수행한다.
+3. 새 저장소의 이름과 공개 범위, 라이선스 표기(timm·torchvision 등 사용 패키지의 라이선스 고지 포함).
 
 ## 9. 검증 절차
 
