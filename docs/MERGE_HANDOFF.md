@@ -194,30 +194,74 @@ mxq_compile(model=onnx_path, calib_data_path=calib_txt, save_path=mxq_path,
 | 포함 위치 | 새로 실행한 산출물과 섞이지 않게 별도 폴더(예: `reference/final_20261006/`)에 둔다. 실행기의 출력 폴더로 쓰지 않는다 |
 | 전처리 | 서버와 NPU의 구현을 통일하지 않는다(7절) |
 | 장소 인식 실험 | 포함하지 않는다. `ETRI_Evaluation_Metric`의 코드·문서·결과를 가져오지 않는다 |
+| 검증 방식 | 축소 실행이 아니라 **4개 모델을 처음부터 전체 실행**한다(9절). A5000 4장으로 약 1.5~2일 예상 |
 
 참고 모델을 넣을 때 지킬 것:
 
 - `.onnx`, `.mxq`는 Git LFS로 추적한다(`.gitattributes`).
 - 원본과 SHA-256이 같은지 확인한다. 서버 `output/release_final_20261006/MANIFEST.json`과 npu `assets/RELEASE_MANIFEST.json`에 해시가 있다.
 - ONNX와 MXQ의 대응(같은 이름 stem)과, 그 모델로 측정한 결과 파일을 README에서 연결해 준다.
-- 참고 MXQ는 9절 4번 검증에서 새로 컴파일한 MXQ의 비교 대상으로 쓴다.
+- 참고 ONNX·MXQ는 새로 실행한 결과의 비교 대상이다(9.2절 2번, 7번).
 
 남은 확인:
 
 1. npu 정리본의 테스트(`tests/test_submission.py`, 18개)는 push 전에 다시 실행하지 못했다. 통합 환경에서 먼저 실행해 통과를 확인한다.
-2. PyTorch checkpoint(`.pt`, 약 1.58 GiB)도 포함할지. 현재 결정은 ONNX와 MXQ만이다. `.pt`가 없으면 9절 2번(기존 가중치로 ONNX 재export)은 원본 저장소의 가중치를 받아서 수행한다.
+2. PyTorch checkpoint(`.pt`)를 새 저장소에 둘지. 현재 결정은 ONNX와 MXQ만 포함이다. 전체를 다시 실행하므로 새 저장소에 기존 `.pt`는 필요하지 않다. 9.2절 2번(기존 가중치로 ONNX 재export)은 원본 저장소의 가중치를 받아서 수행한다. 새로 학습한 가중치를 공개할지는 실행 후 정한다.
 3. 새 저장소의 이름과 공개 범위, 라이선스 표기(timm·torchvision 등 사용 패키지의 라이선스 고지 포함).
 4. 실험에 쓴 ImageNet 사본의 출처와 만든 방법(7-1절). 통합 환경에 같은 사본을 복사해 쓸지, 공식 배포본을 새로 받을지.
 
-## 9. 검증 절차
+## 9. 검증 절차 — 처음부터 전체 실행
 
-통합이 끝났다고 판단하기 전에 아래를 순서대로 확인한다.
+통합 저장소의 검증은 **4개 모델을 처음부터 끝까지 다시 실행**하는 것으로 한다(RTX A5000 4장, 모델당 1장). 압축 학습부터 NPU 벤치마크까지 새 저장소의 코드만으로 수행하고, 그 결과를 아래 기준값과 비교한다.
+
+### 9.1 예상 소요 시간
+
+기존 최종 실험(RTX 2080 Ti 4장, 모델당 1장 동시 실행)의 실제 기록:
+
+| 단계 | 실제 소요 |
+|---|---|
+| 메모리 예산 준비 | 몇 분 |
+| Pruning + KD 학습 30 epoch | 약 24시간 (epoch당 학습 약 45분 + validation) |
+| Patch Slimming 탐색 | 15~20분 |
+| Patch Slimming 학습 30 epoch | 13~18.5시간 |
+| ONNX export, 서버 FP32 평가, 메모리 측정 | 약 10분 |
+| 서버 쪽 합계 | 약 43시간 |
+| MXQ 컴파일 12개 | 1~2시간 (모델당 4~15분) |
+| NPU 평가 12개 × 50,000장 + 독립 메모리 측정 | 약 2시간 |
+
+- A5000 4장에서는 **약 1.5~2일**을 예상한다.
+- 기존 실험에서 Tiny와 Small의 epoch 시간이 같았다(약 2,720초). GPU가 아니라 데이터 로딩이 병목이었다는 뜻이다. A5000에서의 시간은 CPU 코어 수와 디스크 속도에 좌우된다. `num_workers`(기존 8)는 실행 환경에 맞춰 조정해도 결과에 영향이 없다.
+- 실제 소요 시간을 단계별로 기록해 문서에 남긴다.
+
+### 9.2 실행 순서
 
 1. **단위 테스트**: 두 저장소의 테스트를 옮겨 모두 통과시킨다(Server_Compression `tests/`와 `patch_slimming/tests/`, npu `tests/`). 배포 감사용 테스트는 제외.
-2. **기존 모델로 연결 확인**: `output/release_final_20261006/`의 가중치로 ONNX를 다시 export해 금지 연산 검사와 parity를 통과하는지 본다. PyTorch 버전이 다르면 ONNX 해시는 달라질 수 있다.
-3. **짧은 전체 실행**: 한 모델(tiny30)로 epoch과 데이터 수를 줄여 예산 → 학습 → reducing → 탐색 → fine-tuning → ONNX → calibration → MXQ 컴파일까지 한 번에 돈다. 정확도는 보지 않고 단계 연결만 확인한다. 이를 위한 축소 설정 파일을 저장소에 함께 둔다.
-4. **기존 MXQ와 새 MXQ 비교**: 2번의 ONNX를 컴파일해 NPU에서 일부 이미지(예: class당 5장)로 평가하고 아래 기준값과 비교한다.
-5. **전체 재실행**(선택): 4개 모델 전체 학습은 GPU 4장으로 며칠이 걸린다.
+2. **기존 모델로 연결 확인**: 원본 저장소 `output/release_final_20261006/`의 가중치로 ONNX를 다시 export해 금지 연산 검사와 parity를 통과하는지 본다. 같은 입력에서 참고 ONNX와 출력이 같은지도 ONNX Runtime으로 비교한다. PyTorch 버전이 다르면 ONNX 파일 해시는 달라질 수 있다.
+3. **짧은 사전 실행**: 이틀짜리 실행을 시작하기 전에, 한 모델(tiny30)로 epoch과 데이터 수를 줄여 예산 → 학습 → reducing → 탐색 → fine-tuning → ONNX → calibration → MXQ 컴파일까지 한 번에 돌려 단계 연결과 재개(resume)를 확인한다. 정확도는 보지 않는다. 이 축소 설정 파일은 저장소에 함께 두어 외부 사용자도 빠른 동작 확인에 쓸 수 있게 한다.
+4. **전체 실행**: 4개 모델을 GPU 4장에 하나씩 배정해 처음부터 실행한다. 설정은 6절의 값 그대로다.
+5. **MXQ 컴파일**: 새로 만든 ONNX 12개를 컴파일한다. 컴파일 로그와 calibration 목록을 저장한다(7절).
+6. **NPU 벤치마크**: 새 MXQ 12개를 장치로 옮겨 50,000장 전체 평가와 독립 메모리 측정을 수행한다.
+7. **참고 MXQ 재평가**(권장): 같은 장치·같은 날에 참고 MXQ(기존 최종)도 일부 모델에 대해 다시 평가해, 장치 상태가 기준값을 재현하는지 확인한다.
+8. **결과 정리**: 새 결과를 기준값과 나란히 비교한 표를 문서에 넣는다.
+
+### 9.3 중간 확인 지점
+
+전체 실행이 끝나기 전에 설정 오류를 일찍 잡기 위한 확인이다.
+
+| 시점 | 확인 | 기대 |
+|---|---|---|
+| 예산 준비 직후 | 목표 구조의 파라미터 수 | Tiny30 4,003,396 / Tiny50 2,862,256 / Small30 15,434,188 / Small50 11,023,204. Pretrained 가중치로 정해지므로 환경이 달라도 **정확히 같아야 한다** |
+| 예산 준비 직후 | Baseline FP32 정확도 | Tiny 74.660%, Small 80.502% (같은 ImageNet 사본 기준, 7-1절) |
+| 학습 5 epoch | Validation Top-1 (EMA) | Tiny30 63.6 / Tiny50 39.3 / Small30 74.6 / Small50 59.7 부근 |
+| 학습 10 epoch | Validation Top-1 (EMA) | 69.8 / 55.9 / 77.9 / 68.9 부근 |
+| 매 epoch | 메모리 측정 기록 | 후보 peak와 예산이 같고 penalty 0 |
+| Reducing 직후 | Pruned와 reduced의 FP32 정확도 | 서로 같음 |
+| 탐색 직후 | Token 구조 | CLS 포함, 뒤 block의 집합이 앞 block에 포함됨 |
+| Export 직후 | ONNX 검증 | 금지 연산 없음, PyTorch ↔ ONNX Runtime 오차 1e-4 미만 |
+
+전체 epoch별 기준 기록은 원본 저장소 `docs/END_TO_END_IMPLEMENTATION_AND_RESULTS.md` 부록 A에 있다.
+
+### 9.4 기준값과 허용 범위
 
 기준값(최종 결과, ImageNet validation 50,000장):
 
@@ -239,7 +283,18 @@ mxq_compile(model=onnx_path, calib_data_path=calib_txt, save_path=mxq_path,
 | Patch Slimming 정확도 | 1%p 안팎 차이 가능 |
 | 서버 메모리 수치(M_max 등) | GPU·CUDA에 따라 달라진다 |
 
+NPU 쪽에서 기대하는 것:
+
+| 항목 | 기대 |
+|---|---|
+| Baseline NPU 정확도 | 기준값과 거의 같음. 같은 baseline을 따로 두 번 컴파일했을 때 Top-1 예측이 완전히 같았다 |
+| Reduced NPU 정확도 | 새 reduced의 서버 FP32 정확도보다 0.3~1.4%p 낮은 수준 |
+| Patch Slimming NPU 정확도 | 서버 FP32보다 크게 낮음(기존 7.9~18.1%p). 새 token 구조에 따라 하락 폭이 달라질 수 있다 |
+| Latency, NPU 메모리 | Baseline·reduced는 기준값과 비슷. Patch Slimming은 token 구조가 달라지면 함께 달라진다 |
+
 위 범위를 크게 벗어나면(예: reduced 정확도가 2%p 이상 다름) 설정이 달라졌을 가능성이 높다. 6절의 값부터 대조한다.
+
+새 결과가 기준값과 다르더라도 위 범위 안이면 정상이다. 새 저장소의 문서에는 **새로 실행한 결과**를 싣고, 기존 최종 결과(참고 ONNX·MXQ의 결과)는 참고값으로 구분해 함께 둔다. 두 결과를 한 표에 섞지 않는다.
 
 ## 10. 참고 문서
 
