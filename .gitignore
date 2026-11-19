@@ -51,6 +51,9 @@ Thumbs.db
 .deps/
 .tools/
 
+# Private report drafts and working notes. Never publish.
+/report_private/
+
 # Archived work is retained locally, not part of the final submission source.
 past/
 .ipynb_checkpoints/
