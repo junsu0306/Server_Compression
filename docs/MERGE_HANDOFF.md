@@ -151,6 +151,39 @@ mxq_compile(model=onnx_path, calib_data_path=calib_txt, save_path=mxq_path,
 - **Patch Slimming 모델은 NPU에서 정확도가 추가로 떨어진다**(서버 FP32 대비 7.9~18.1%p). MXQ 변환 과정의 양자화에서 발생한 것으로 판단하며, 이번 통합의 수정 대상이 아니다. 통합 후에도 이 현상이 재현되는 것이 정상이다.
 - MXQ 컴파일은 byte 단위로 재현되지 않는다(같은 ONNX를 두 번 컴파일하면 파일 해시가 다르다). 해시 일치가 아니라 정확도로 비교한다.
 
+## 7-1. 데이터셋 (ImageNet) — 준비 기록이 없으므로 통합 저장소에서 문서화할 것
+
+두 저장소 어디에도 ImageNet을 어디서 받았고 어떻게 정리했는지에 대한 기록이나 스크립트가 없다. 실제 실험에 쓴 데이터를 확인한 결과는 다음과 같다.
+
+| 항목 | 실험에 쓴 데이터 | 공식 ILSVRC2012 배포본 |
+|---|---|---|
+| 폴더 구조 | `train/00000` ~ `train/00999`, `val/00000` ~ `val/00999` (class index 5자리 숫자) | `train/n01440764/...` (synset ID), `val/`은 폴더 구분 없이 50,000장 |
+| 파일명 | 숫자로만 된 이름 (예: `013862900598484.jpg`) | `n01440764_10026.JPEG`, `ILSVRC2012_val_00000001.JPEG` |
+| Train 수 | 1,280,297장 (class당 732~1,300장) | 1,281,167장 |
+| Validation 수 | 50,000장 (class당 50장) | 50,000장 |
+| 용량 | train 약 50 GB, val 약 2.1 GB | train 약 140 GB, val 약 6.3 GB |
+| 형식 | 전부 `.jpg`, 표본 확인 시 RGB JPEG, 원본 해상도(리사이즈 안 됨) | JPEG (일부 CMYK·grayscale 포함) |
+
+- 실험 데이터는 공식 배포본을 그대로 푼 것이 아니라, class 폴더와 파일명이 바뀌고 다시 인코딩된 사본이다. 출처는 기록되어 있지 않으므로 소유자에게 확인한다.
+- Class 폴더 번호는 표준 class index와 같다(`00000` = tench, `00001` = goldfish …). timm pretrained 모델의 baseline 정확도가 정상적으로 나오는 것으로 확인된다.
+- **서버 쪽 코드**는 `torchvision.datasets.ImageFolder`를 쓰므로 폴더 이름을 정렬한 순서가 label이다. 공식 배포본의 synset 폴더(`n01440764` …)도 정렬 순서가 표준 index와 같아 그대로 쓸 수 있다. 단 `val/`은 class별 폴더로 나누어야 한다.
+- **NPU 평가 코드**(`benchmark/final/eval_final_models.py`의 `collect_samples`)는 **이름이 숫자인 폴더만** class로 인식하고 폴더 이름을 정수로 바꿔 label로 쓴다. Synset 이름 폴더는 읽지 못한다. 공식 배포본을 쓰려면 폴더를 `00000`~`00999`로 바꾸거나 코드를 synset 폴더도 받도록 고쳐야 한다.
+- 데이터가 달라지면 수치도 달라진다. 실험 데이터는 다시 인코딩된 사본이고 train이 870장 적다. 공식 배포본으로 평가하면 baseline 정확도부터 기준값(Tiny 74.660%, Small 80.502%)과 차이가 날 수 있다. 같은 데이터가 아니면 기준값과의 비교는 참고 수준으로 본다.
+- NPU 평가의 표본 선택은 파일명을 정렬한 뒤 seed로 뽑는다. 파일명이 다르면 같은 seed라도 다른 이미지가 뽑힌다(validation 전체 50,000장을 쓰면 영향 없음).
+
+**Calibration 이미지**
+
+- 서버의 `data/imagenet/prepare_calib.py`로 만들었다: train에서 class당 1장씩 무작위로 뽑아 1,000장. **seed를 지정하지 않아** 다시 실행하면 다른 이미지가 뽑힌다.
+- 실제로 뽑힌 1,000장은 npu 저장소 로컬의 `assets/calibration_data/`(class 폴더당 1장)에 남아 있고, 서버의 `data/imagenet/calib_data/`와 파일명이 모두 일치한다. Git에는 올라가 있지 않다.
+- 이 1,000장을 OpenCV 전처리로 `.npy`로 바꾼 것이 컴파일 입력이다(6절).
+
+통합 저장소에서 할 일:
+
+1. 데이터 준비 문서를 쓴다: 필요한 폴더 구조, 공식 배포본에서 그 구조를 만드는 방법(validation을 class 폴더로 나누기, 필요 시 숫자 폴더로 바꾸기), 이미지 수 확인 방법.
+2. 준비 스크립트를 넣는다: 폴더 구조 변환, 이미지 수·class 수 검사.
+3. Calibration 추출 스크립트에 **seed를 넣고**, 뽑은 이미지의 상대 경로 목록을 파일로 저장하게 한다. 기존 1,000장의 목록(class 폴더/파일명)도 참고용으로 저장소에 둔다. 이미지 자체는 넣지 않는다.
+4. ImageNet 이미지는 라이선스상 저장소에 넣지 않는다.
+
 ## 8. 결정된 사항과 남은 확인
 
 결정된 사항:
@@ -174,6 +207,7 @@ mxq_compile(model=onnx_path, calib_data_path=calib_txt, save_path=mxq_path,
 1. npu 정리본의 테스트(`tests/test_submission.py`, 18개)는 push 전에 다시 실행하지 못했다. 통합 환경에서 먼저 실행해 통과를 확인한다.
 2. PyTorch checkpoint(`.pt`, 약 1.58 GiB)도 포함할지. 현재 결정은 ONNX와 MXQ만이다. `.pt`가 없으면 9절 2번(기존 가중치로 ONNX 재export)은 원본 저장소의 가중치를 받아서 수행한다.
 3. 새 저장소의 이름과 공개 범위, 라이선스 표기(timm·torchvision 등 사용 패키지의 라이선스 고지 포함).
+4. 실험에 쓴 ImageNet 사본의 출처와 만든 방법(7-1절). 통합 환경에 같은 사본을 복사해 쓸지, 공식 배포본을 새로 받을지.
 
 ## 9. 검증 절차
 
