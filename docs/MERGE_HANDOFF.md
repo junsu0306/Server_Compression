@@ -20,8 +20,8 @@
 
 | 저장소 | 기준 | 주의 |
 |---|---|---|
-| `junsu0306/Server_Compression` | `main` 최신 | 최종 실험 `final_20261006`의 코드. `output/release_final_20261006/`에 최종 가중치·ONNX(Git LFS) |
-| `junsu0306/npu` | **2026-10-20 제출 정리가 반영된 커밋** | 원격 `main`이 `3e8bb5a`(2026-10-15)이면 정리 전 구조다. 이 경우 `compile/mxq/compile_hwc.py`에 쓰이지 않는 수동 양자화 인자가 남아 있고 `docs/`, `scripts/verify_release.py`, `tests/`가 없다. 정리본이 push됐는지 먼저 확인한다 |
+| `junsu0306/Server_Compression` | 브랜치 `merge-handoff` | 최종 실험 `final_20261006`의 코드와 이 문서. `output/release_final_20261006/`에 최종 가중치·ONNX(Git LFS) |
+| `junsu0306/npu` | 브랜치 `merge-handoff` (커밋 `0ee252c`) | 2026-10-20 제출 정리가 반영된 버전. `main`(`3e8bb5a`, 2026-10-15)은 정리 전 구조이므로 쓰지 않는다. `main`에는 쓰이지 않는 수동 양자화 인자가 남아 있고 `docs/`, `scripts/verify_release.py`, `tests/`가 없다. ONNX·MXQ는 LFS가 아닌 일반 Git 파일이다 |
 
 두 저장소는 서로 import하지 않는다. 연결 지점은 파일뿐이다: ONNX 12개와 `.verified.json` → MXQ 12개.
 
@@ -171,7 +171,7 @@ mxq_compile(model=onnx_path, calib_data_path=calib_txt, save_path=mxq_path,
 
 남은 확인:
 
-1. npu 저장소의 2026-10-20 정리본이 원격에 push됐는가(2절).
+1. npu 정리본의 테스트(`tests/test_submission.py`, 18개)는 push 전에 다시 실행하지 못했다. 통합 환경에서 먼저 실행해 통과를 확인한다.
 2. PyTorch checkpoint(`.pt`, 약 1.58 GiB)도 포함할지. 현재 결정은 ONNX와 MXQ만이다. `.pt`가 없으면 9절 2번(기존 가중치로 ONNX 재export)은 원본 저장소의 가중치를 받아서 수행한다.
 3. 새 저장소의 이름과 공개 범위, 라이선스 표기(timm·torchvision 등 사용 패키지의 라이선스 고지 포함).
 
